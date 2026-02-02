@@ -1,4 +1,4 @@
-name: TEST
+name: Gartic Auto Bot
 
 on:
   workflow_dispatch:
@@ -64,212 +64,164 @@ jobs:
           }
           $policies | ConvertTo-Json -Depth 5 | Out-File "$distDir\policies.json" -Encoding UTF8
 
-      - name: Auto-Install Script to Tampermonkey
+      - name: Create Tampermonkey Script
         run: |
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "-CreateProfile", "auto_profile"
-          Start-Sleep -Seconds 8
-          Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 2
+          $scriptContent = @'
+          // ==UserScript==
+          // @name         Gartic.io Token Fetcher Auto
+          // @namespace    http://tampermonkey.net/
+          // @version      1.0
+          // @description  Fetch tokens automatically with auto-reload
+          // @author       Saif
+          // @match        *://gartic.io/*
+          // @match        *://*.gartic.io/*
+          // @grant        none
+          // @run-at       document-start
+          // ==/UserScript==
 
-          $profilePath = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -Filter "*auto_profile*" | Select-Object -First 1 -ExpandProperty FullName
+          (function () {
+              'use strict';
 
-          if (!$profilePath) {
-              $profilePath = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" | Select-Object -First 1 -ExpandProperty FullName
-          }
+              const TOKEN_INTERVAL = 3500;
+              const NUM_IFRAMES = 5;
+              const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
 
-          $storageDir = "$profilePath\storage\default"
-          $tampermonkeyOrigin = "moz-extension+++$((New-Guid).Guid)"
-          $idbDir = "$storageDir\$tampermonkeyOrigin\idb"
-          
-          if (!(Test-Path $idbDir)) {
-              New-Item -ItemType Directory -Force -Path $idbDir
-          }
+              setInterval(() => {
+                  location.reload();
+              }, 30000);
 
-          $scriptContent = @"
-// ==UserScript==
-// @name         Gartic.io Token Fetcher Auto
-// @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Fetch tokens automatically with auto-reload
-// @author       Saif
-// @match        *://gartic.io/*
-// @match        *://*.gartic.io/*
-// @grant        none
-// @run-at       document-start
-// ==/UserScript==
+              function sendToken(token) {
+                  if (typeof token !== 'string' || token.length <= 20) return;
+                  console.log('Token sent:', token);
+                  fetch(BACKEND_URL, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ token })
+                  }).catch(() => {});
+              }
 
-(function () {
-    'use strict';
+              function createTurnstileFrames() {
+                  window.addEventListener('message', function(event) {
+                      if (event.data && typeof event.data === 'string') {
+                          sendToken(event.data);
+                      }
+                  });
 
-    const TOKEN_INTERVAL = 3500;
-    const NUM_IFRAMES = 5;
-    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+                  for (let i = 0; i < NUM_IFRAMES; i++) {
+                      const iframe = document.createElement('iframe');
+                      iframe.style.display = 'none';
+                      iframe.sandbox = 'allow-scripts allow-same-origin';
+                      document.body.appendChild(iframe);
 
-    setInterval(() => {
-        location.reload();
-    }, 30000);
+                      const html = `
+                          <!DOCTYPE html>
+                          <html>
+                          <head>
+                              <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                          </head>
+                          <body>
+                              <div id="cf-turnstile"></div>
+                              <script>
+                                  function requestToken() {
+                                      try {
+                                          window.turnstile.render('#cf-turnstile', {
+                                              sitekey: '0x4AAAAAABBPKaIbNwnPEfSo',
+                                              callback: function(token) {
+                                                  parent.postMessage(token, '*');
+                                              }
+                                          });
+                                      } catch (e) {}
+                                  }
+                                  setInterval(requestToken, ${TOKEN_INTERVAL});
+                                  setTimeout(requestToken, 200);
+                              </script>
+                          </body>
+                          </html>
+                      `;
+                      iframe.srcdoc = html;
+                  }
+              }
 
-    function sendToken(token) {
-        if (typeof token !== 'string' || token.length <= 20) return;
-        console.log('Token sent:', token);
-        fetch(BACKEND_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
-        }).catch(() => {});
-    }
-
-    function createTurnstileFrames() {
-        window.addEventListener('message', function(event) {
-            if (event.data && typeof event.data === 'string') {
-                sendToken(event.data);
-            }
-        });
-
-        for (let i = 0; i < NUM_IFRAMES; i++) {
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.sandbox = 'allow-scripts allow-same-origin';
-            document.body.appendChild(iframe);
-
-            const html = \`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-                </head>
-                <body>
-                    <div id="cf-turnstile"></div>
-                    <script>
-                        function requestToken() {
-                            try {
-                                window.turnstile.render('#cf-turnstile', {
-                                    sitekey: '0x4AAAAAABBPKaIbNwnPEfSo',
-                                    callback: function(token) {
-                                        parent.postMessage(token, '*');
-                                    }
-                                });
-                            } catch (e) {}
-                        }
-                        setInterval(requestToken, \${TOKEN_INTERVAL});
-                        setTimeout(requestToken, 200);
-                    </script>
-                </body>
-                </html>
-            \`;
-            iframe.srcdoc = html;
-        }
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', createTurnstileFrames);
-    } else {
-        createTurnstileFrames();
-    }
-})();
-"@
+              if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', createTurnstileFrames);
+              } else {
+                  createTurnstileFrames();
+              }
+          })();
+          '@
 
           $scriptContent | Out-File "$env:TEMP\gartic_script.user.js" -Encoding UTF8 -Force
 
-          $prefsJs = @"
-user_pref("extensions.tampermonkey.scriptInstall", true);
-user_pref("extensions.tampermonkey.autoUpdate", false);
-"@
-          Add-Content -Path "$profilePath\prefs.js" -Value $prefsJs -Force
-
-      - name: Create Auto-Launcher Script
+      - name: Create Auto Launcher
         run: |
-          $autoLaunch = @"
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+          $launcher = @'
+          Add-Type -AssemblyName System.Windows.Forms
+          Start-Sleep -Seconds 5
 
-Start-Sleep -Seconds 3
+          $firefoxPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
+          $scriptPath = "$env:TEMP\gartic_script.user.js"
 
-`$firefoxPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
-`$profilePath = Get-ChildItem "`$env:APPDATA\Mozilla\Firefox\Profiles" | Select-Object -First 1 -ExpandProperty FullName
-`$scriptPath = "`$env:TEMP\gartic_script.user.js"
+          Start-Process $firefoxPath -ArgumentList $scriptPath
+          Start-Sleep -Seconds 10
 
-Start-Process `$firefoxPath -ArgumentList "-P auto_profile `$scriptPath"
-Start-Sleep -Seconds 8
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Click {
+              [DllImport("user32.dll")]
+              public static extern void mouse_event(int flags, int dx, int dy, int data, int extra);
+              [DllImport("user32.dll")]
+              public static extern bool SetCursorPos(int x, int y);
+          }
+          "@
 
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class UserInput {
-    [DllImport("user32.dll")]
-    public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
-    [DllImport("user32.dll")]
-    public static extern bool SetCursorPos(int X, int Y);
-    public const int MOUSEEVENTF_LEFTDOWN = 0x02;
-    public const int MOUSEEVENTF_LEFTUP = 0x04;
-}
-"@
+          [Click]::SetCursorPos(960, 540)
+          Start-Sleep -Milliseconds 500
+          [Click]::mouse_event(0x02, 0, 0, 0, 0)
+          Start-Sleep -Milliseconds 100
+          [Click]::mouse_event(0x04, 0, 0, 0, 0)
 
-Start-Sleep -Seconds 3
+          Start-Sleep -Seconds 3
 
-[UserInput]::SetCursorPos(960, 540)
-Start-Sleep -Milliseconds 500
-[UserInput]::mouse_event([UserInput]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-Start-Sleep -Milliseconds 100
-[UserInput]::mouse_event([UserInput]::MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+          [Click]::SetCursorPos(960, 400)
+          Start-Sleep -Milliseconds 500
+          [Click]::mouse_event(0x02, 0, 0, 0, 0)
+          Start-Sleep -Milliseconds 100
+          [Click]::mouse_event(0x04, 0, 0, 0, 0)
 
-Start-Sleep -Seconds 2
+          Start-Sleep -Seconds 5
 
-[UserInput]::SetCursorPos(960, 400)
-Start-Sleep -Milliseconds 500
-[UserInput]::mouse_event([UserInput]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-Start-Sleep -Milliseconds 100
-[UserInput]::mouse_event([UserInput]::MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+          Stop-Process -Name firefox -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 3
 
-Start-Sleep -Seconds 5
+          for ($i = 1; $i -le 3; $i++) {
+              Start-Process $firefoxPath -ArgumentList "https://gartic.io"
+              Start-Sleep -Seconds 2
+          }
+          '@
 
-for (`$i = 1; `$i -le 3; `$i++) {
-    Start-Process `$firefoxPath -ArgumentList "-P auto_profile https://gartic.io"
-    Start-Sleep -Seconds 3
-}
+          $launcher | Out-File "$env:TEMP\launcher.ps1" -Encoding UTF8 -Force
 
-Start-Sleep -Seconds 10
-
-Get-Process firefox -ErrorAction SilentlyContinue | ForEach-Object {
-    `$_.CloseMainWindow() | Out-Null
-}
-Start-Sleep -Seconds 2
-Stop-Process -Name firefox -Force -ErrorAction SilentlyContinue
-
-Start-Sleep -Seconds 3
-
-for (`$i = 1; `$i -le 3; `$i++) {
-    Start-Process `$firefoxPath -ArgumentList "-P auto_profile https://gartic.io"
-    Start-Sleep -Seconds 2
-}
-
-Write-Host "System fully automated and running!"
-"@
-
-          $autoLaunch | Out-File "$env:TEMP\auto_start.ps1" -Encoding UTF8 -Force
-
-      - name: Launch Auto System
+      - name: Launch System
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           
           Write-Host "========================================"
-          Write-Host "   GARTIC BOT AUTO SYSTEM ACTIVE"
+          Write-Host "   GARTIC BOT AUTO SYSTEM"
           Write-Host "========================================"
           Write-Host "RDP IP: $ip"
           Write-Host "Username: saif123"
           Write-Host "Password: admin@123"
           Write-Host "========================================"
-          Write-Host "Initializing auto-system in 5 seconds..."
+          Write-Host "Starting auto-system..."
           Write-Host "========================================"
 
-          Start-Sleep -Seconds 5
+          Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File $env:TEMP\launcher.ps1" -WindowStyle Hidden
 
-          Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File $env:TEMP\auto_start.ps1" -WindowStyle Hidden
-
-          Write-Host "System launched successfully!"
-          Write-Host "3 Gartic tabs will open automatically"
-          Write-Host "Auto-refresh every 30 seconds enabled"
-          Write-Host "Session will restart every 6 hours"
+          Write-Host "System running!"
+          Write-Host "3 tabs will open automatically"
+          Write-Host "Auto-refresh: 30 seconds"
+          Write-Host "Auto-restart: Every 6 hours"
           Write-Host "========================================"
 
           while ($true) { Start-Sleep -Seconds 300 }
