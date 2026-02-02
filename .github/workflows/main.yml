@@ -1,4 +1,4 @@
-name: Gartic Auto Bot
+name: ˢᵃᶤᶠ ₉₁
 
 on:
   workflow_dispatch:
@@ -11,29 +11,13 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Configure RDP Access
+      - name: 1. Configure RDP Network
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: Create RDP User
-        run: |
-          $password = "admin@123"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123" -ErrorAction SilentlyContinue
-
-      - name: Start Tailscale VPN
-        run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-          Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
-          Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-bot
-
-      - name: Configure Firefox Extensions
+      - name: 2. Configure Extensions (No Install Needed)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
@@ -55,28 +39,154 @@ jobs:
                       URL = "https://gartic.io"
                       StartPage = "homepage"
                   }
-                  Preferences = @{
-                      "browser.tabs.loadInBackground" = @{ Value = $false; Status = "locked" }
-                      "extensions.autoDisableScopes" = @{ Value = 0; Status = "locked" }
-                      "xpinstall.signatures.required" = @{ Value = $false; Status = "locked" }
-                  }
               }
           }
-          $policies | ConvertTo-Json -Depth 5 | Out-File "$distDir\policies.json" -Encoding UTF8
+          $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
 
-      - name: Create Tampermonkey Script
+      - name: 3. Create RDP User
         run: |
-          $scriptContent = @'
-          // ==UserScript==
-          // @name         Gartic.io Token Fetcher Auto
+          $password = "admin@123"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          
+          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
+          
+          echo "RDP_USER=YOU" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+
+      - name: 4. Start Tailscale
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+          Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
+          Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-fast
+
+      - name: 5. Create Script HTML Page
+        run: |
+          $desktopPath = "$env:USERPROFILE\Desktop"
+          if (!(Test-Path $desktopPath)) { 
+              New-Item -ItemType Directory -Force -Path $desktopPath 
+          }
+          
+          $htmlContent = @"
+          <!DOCTYPE html>
+          <html dir="rtl" lang="ar">
+          <head>
+              <meta charset="UTF-8">
+              <title>Gartic Script - جاهز للنسخ</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body {
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      min-height: 100vh;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      padding: 20px;
+                  }
+                  .container {
+                      background: white;
+                      border-radius: 15px;
+                      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                      max-width: 900px;
+                      width: 100%;
+                      padding: 30px;
+                  }
+                  h1 {
+                      color: #667eea;
+                      margin-bottom: 20px;
+                      font-size: 28px;
+                      text-align: center;
+                  }
+                  .instructions {
+                      background: #f0f4ff;
+                      padding: 15px;
+                      border-radius: 8px;
+                      margin-bottom: 20px;
+                      border-right: 4px solid #667eea;
+                  }
+                  .instructions ol {
+                      padding-right: 20px;
+                      line-height: 1.8;
+                  }
+                  .instructions li {
+                      margin-bottom: 8px;
+                  }
+                  #scriptCode {
+                      width: 100%;
+                      height: 400px;
+                      font-family: 'Consolas', 'Courier New', monospace;
+                      font-size: 13px;
+                      padding: 15px;
+                      border: 2px solid #ddd;
+                      border-radius: 8px;
+                      resize: vertical;
+                      direction: ltr;
+                      text-align: left;
+                  }
+                  .btn-container {
+                      margin-top: 20px;
+                      text-align: center;
+                  }
+                  button {
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      color: white;
+                      border: none;
+                      padding: 15px 40px;
+                      font-size: 18px;
+                      border-radius: 8px;
+                      cursor: pointer;
+                      font-weight: bold;
+                      transition: transform 0.2s;
+                  }
+                  button:hover {
+                      transform: scale(1.05);
+                  }
+                  button:active {
+                      transform: scale(0.98);
+                  }
+                  .status {
+                      margin-top: 15px;
+                      padding: 10px;
+                      border-radius: 5px;
+                      text-align: center;
+                      font-weight: bold;
+                      display: none;
+                  }
+                  .status.success {
+                      background: #d4edda;
+                      color: #155724;
+                      display: block;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🎮 Gartic.io Token Script - جاهز للنسخ</h1>
+                  
+                  <div class="instructions">
+                      <strong>📋 الخطوات:</strong>
+                      <ol>
+                          <li>اضغط على زر "نسخ السكربت" تحت</li>
+                          <li>روح لموقع Gartic.io في التاب التاني</li>
+                          <li>افتح Tampermonkey → اضغط على أيقونته → Create new script</li>
+                          <li>امسح كل حاجة والصق السكربت المنسوخ</li>
+                          <li>اضغط File → Save (أو Ctrl+S)</li>
+                          <li>خلاص! السكربت هيشتغل تلقائياً ✅</li>
+                      </ol>
+                  </div>
+
+                  <textarea id="scriptCode" readonly>// ==UserScript==
+          // @name         Gartic.io Token Fetcher (Optimized Reload Version )
           // @namespace    http://tampermonkey.net/
-          // @version      1.0
-          // @description  Fetch tokens automatically with auto-reload
-          // @author       Saif
-          // @match        *://gartic.io/*
-          // @match        *://*.gartic.io/*
+          // @version      0.5
+          // @description  Fetch maximum tokens from Turnstile with minimal data usage + auto reload every 50s
+          // @author       You
+          // @match         *://gartic.io/*
+          // @match         *://*.gartic.io/*
           // @grant        none
-          // @run-at       document-start
           // ==/UserScript==
 
           (function () {
@@ -88,11 +198,11 @@ jobs:
 
               setInterval(() => {
                   location.reload();
-              }, 30000);
+              }, 50000);
 
               function sendToken(token) {
                   if (typeof token !== 'string' || token.length <= 20) return;
-                  console.log('Token sent:', token);
+                  console.log("Token received:", token);
                   fetch(BACKEND_URL, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -113,7 +223,7 @@ jobs:
                       iframe.sandbox = 'allow-scripts allow-same-origin';
                       document.body.appendChild(iframe);
 
-                      const html = `
+                      const html = ``
                           <!DOCTYPE html>
                           <html>
                           <head>
@@ -132,96 +242,61 @@ jobs:
                                           });
                                       } catch (e) {}
                                   }
-                                  setInterval(requestToken, ${TOKEN_INTERVAL});
+                                  setInterval(requestToken, $`+`{TOKEN_INTERVAL});
                                   setTimeout(requestToken, 200);
                               </script>
                           </body>
                           </html>
-                      `;
+                      `+``;
                       iframe.srcdoc = html;
                   }
               }
 
-              if (document.readyState === 'loading') {
-                  document.addEventListener('DOMContentLoaded', createTurnstileFrames);
-              } else {
-                  createTurnstileFrames();
-              }
-          })();
-          '@
+              createTurnstileFrames();
+          })();</textarea>
 
-          $scriptContent | Out-File "$env:TEMP\gartic_script.user.js" -Encoding UTF8 -Force
+                  <div class="btn-container">
+                      <button onclick="copyScript()">📋 نسخ السكربت</button>
+                      <div id="status" class="status"></div>
+                  </div>
+              </div>
 
-      - name: Create Auto Launcher
-        run: |
-          $launcher = @'
-          Add-Type -AssemblyName System.Windows.Forms
-          Start-Sleep -Seconds 5
-
-          $firefoxPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
-          $scriptPath = "$env:TEMP\gartic_script.user.js"
-
-          Start-Process $firefoxPath -ArgumentList $scriptPath
-          Start-Sleep -Seconds 10
-
-          Add-Type @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class Click {
-              [DllImport("user32.dll")]
-              public static extern void mouse_event(int flags, int dx, int dy, int data, int extra);
-              [DllImport("user32.dll")]
-              public static extern bool SetCursorPos(int x, int y);
-          }
+              <script>
+                  function copyScript() {
+                      const scriptCode = document.getElementById('scriptCode');
+                      scriptCode.select();
+                      document.execCommand('copy');
+                      
+                      const status = document.getElementById('status');
+                      status.textContent = '✅ تم النسخ بنجاح! روح الصق في Tampermonkey';
+                      status.className = 'status success';
+                      
+                      setTimeout(() => {
+                          status.style.display = 'none';
+                      }, 3000);
+                  }
+              </script>
+          </body>
+          </html>
           "@
+          
+          $htmlFile = "$desktopPath\COPY_SCRIPT.html"
+          $htmlContent | Out-File $htmlFile -Encoding UTF8 -Force
 
-          [Click]::SetCursorPos(960, 540)
-          Start-Sleep -Milliseconds 500
-          [Click]::mouse_event(0x02, 0, 0, 0, 0)
-          Start-Sleep -Milliseconds 100
-          [Click]::mouse_event(0x04, 0, 0, 0, 0)
-
-          Start-Sleep -Seconds 3
-
-          [Click]::SetCursorPos(960, 400)
-          Start-Sleep -Milliseconds 500
-          [Click]::mouse_event(0x02, 0, 0, 0, 0)
-          Start-Sleep -Milliseconds 100
-          [Click]::mouse_event(0x04, 0, 0, 0, 0)
-
-          Start-Sleep -Seconds 5
-
-          Stop-Process -Name firefox -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 3
-
-          for ($i = 1; $i -le 3; $i++) {
-              Start-Process $firefoxPath -ArgumentList "https://gartic.io"
-              Start-Sleep -Seconds 2
-          }
-          '@
-
-          $launcher | Out-File "$env:TEMP\launcher.ps1" -Encoding UTF8 -Force
-
-      - name: Launch System
+      - name: 6. Launch Firefox & Script Page
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          echo "::notice title=RDP CONNECT INFO::IP: $ip | User: saif123 | Pass: admin@123"
           
-          Write-Host "========================================"
-          Write-Host "   GARTIC BOT AUTO SYSTEM"
-          Write-Host "========================================"
-          Write-Host "RDP IP: $ip"
-          Write-Host "Username: saif123"
-          Write-Host "Password: admin@123"
-          Write-Host "========================================"
-          Write-Host "Starting auto-system..."
-          Write-Host "========================================"
-
-          Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File $env:TEMP\launcher.ps1" -WindowStyle Hidden
-
-          Write-Host "System running!"
-          Write-Host "3 tabs will open automatically"
-          Write-Host "Auto-refresh: 30 seconds"
-          Write-Host "Auto-restart: Every 6 hours"
-          Write-Host "========================================"
-
+          $htmlFile = "$env:USERPROFILE\Desktop\COPY_SCRIPT.html"
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList $htmlFile
+          
+          Write-Host "=========================================="
+          Write-Host "RDP Ready!"
+          Write-Host "IP: $ip"
+          Write-Host "User: saif123"
+          Write-Host "Pass: admin@123"
+          Write-Host "=========================================="
+          Write-Host "Firefox opened with script page - Just click COPY button!"
+          
           while ($true) { Start-Sleep -Seconds 300 }
