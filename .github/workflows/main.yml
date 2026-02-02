@@ -45,12 +45,12 @@ jobs:
 
       - name: 3. Create RDP User
         run: |
-          $password = "Start@123456"
+          $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
-          New-LocalUser -Name "YOU" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "YOU"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "YOU"
+          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
           
           echo "RDP_USER=YOU" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
