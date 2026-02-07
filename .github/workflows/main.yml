@@ -16,19 +16,17 @@ jobs:
         instance: [1, 2, 3]
     
     steps:
-      - name: 1. Configure RDP Network & Performance
+      - name: 1. Configure RDP Network
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
-          # منع السكون للحفاظ على الاتصال
           powercfg /x -hibernate-timeout-ac 0
 
-      - name: 2. Install All Extensions (Firefox Policies)
+      - name: 2. Install Extensions via Policy
         run: |
           $distDir = "C:\Program Files\Mozilla Firefox\distribution"
           if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
-          
           $policies = @{
               policies = @{
                   Extensions = @{
@@ -41,87 +39,50 @@ jobs:
                   }
                   DisableAppUpdate = $true
                   DontCheckDefaultBrowser = $true
-                  Homepage = @{
-                      URL = "https://gartic.io"
-                      StartPage = "homepage"
-                  }
+                  Homepage = @{ URL = "https://gartic.io"; StartPage = "homepage" }
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
 
-      - name: 3. Create RDP User & Save Script to Desktop
+      - name: 3. Create RDP User & Script File
         run: |
-          # إنشاء المستخدم
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
-          
-          # تجهيز سكريبت التمبر مونكي في ملف على سطح المكتب
           $desktopPath = "C:\Users\saif123\Desktop"
           if (!(Test-Path $desktopPath)) { New-Item -ItemType Directory -Force -Path $desktopPath }
-          
-          $scriptContent = @'
-// ==UserScript==
-// @name         Gartic.io Token Fetcher (Optimized)
-// @namespace    http://tampermonkey.net/
-// @version      0.5
-// @description  Fetch tokens from Turnstile
-// @match        *://gartic.io/*
-// @match        *://*.gartic.io/*
-// @grant        none
-// ==/UserScript==
-(function () {
-    'use strict';
-    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
-    setInterval(() => { location.reload(); }, 50000);
-    
-    function sendToken(token) {
-        if (typeof token !== 'string' || token.length <= 20) return;
-        fetch(BACKEND_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
-        }).catch(() => {});
-    }
-
-    window.addEventListener('message', (e) => { if(e.data) sendToken(e.data); });
-
-    function createTurnstile() {
-        for (let i = 0; i < 5; i++) {
-            const ifr = document.createElement('iframe');
-            ifr.style.display = 'none';
-            ifr.srcdoc = `<html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head>
-            <body><div id="cf"></div><script>
-            setInterval(() => { try{ window.turnstile.render('#cf', { sitekey: '0x4AAAAAABBPKaIbNwnPEfSo', callback: t => parent.postMessage(t, '*') }); }catch(e){} }, 3500);
-            </script></body></html>`;
-            document.body.appendChild(ifr);
-        }
-    }
-    createTurnstile();
-})();
-'@
+          $scriptContent = @"
+          // ==UserScript==
+          // @name Gartic Token Fetcher
+          // @match *://gartic.io/*
+          // @grant none
+          // ==/UserScript==
+          (function() {
+              setInterval(() => location.reload(), 50000);
+              window.addEventListener('message', e => {
+                  if (e.data && e.data.length > 20) {
+                      fetch('https://www.xsw.work.gd/add-token', {
+                          method: 'POST',
+                          headers: {'Content-Type': 'application/json'},
+                          body: JSON.stringify({token: e.data})
+                      });
+                  }
+              });
+          })();
+          "@
           $scriptContent | Out-File "$desktopPath\Gartic_Script.txt" -Encoding UTF8
 
       - name: 4. Start Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-          Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-rdp-${{ matrix.instance }}
 
-      - name: 5. Launch Firefox & Stay Alive
+      - name: 5. Launch Firefox
         run: |
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=🖥️ RDP-${{ matrix.instance }}::IP: $ip | User: saif123 | Pass: admin@123"
-          
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
-          
-          # الحفاظ على الجهاز شغال
-          while ($true) {
-            [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point((Get-Random -Maximum 1000), (Get-Random -Maximum 1000))
-            Start-Sleep -Seconds 300
-          }
+          while ($true) { [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(500,500); Start-Sleep -Seconds 300 }
 
   restart-on-failure:
     needs: gartic-bot
@@ -131,7 +92,7 @@ jobs:
       - name: Trigger New Run
         run: |
           curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.MY_GITHUB_PAT }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/$(basename ${{ github.workflow_ref }})/dispatches \
-            -d '{"ref":"${{ github.ref_name }}"}'
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.MY_GITHUB_PAT }}" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/main.yml/dispatches" \
+          -d '{"ref":"${{ github.ref_name }}"}'
