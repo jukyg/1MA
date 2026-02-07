@@ -16,7 +16,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Configure Extensions and Tampermonkey Script
+      - name: 2. Configure Extensions
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
@@ -41,66 +41,6 @@ jobs:
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
-          
-          $scriptDir = "C:\TampermonkeyScripts"
-          New-Item -ItemType Directory -Force -Path $scriptDir
-          
-          $scriptPath = "$scriptDir\gartic-token-fetcher.user.js"
-          
-          $scriptHeader = "// ==UserScript==`n"
-          $scriptHeader += "// @name         Gartic.io Token Fetcher`n"
-          $scriptHeader += "// @namespace    http://tampermonkey.net/`n"
-          $scriptHeader += "// @version      0.5`n"
-          $scriptHeader += "// @description  Fetch tokens from Turnstile`n"
-          $scriptHeader += "// @author       You`n"
-          $scriptHeader += "// @match        *://gartic.io/*`n"
-          $scriptHeader += "// @match        *://*.gartic.io/*`n"
-          $scriptHeader += "// @grant        none`n"
-          $scriptHeader += "// ==/UserScript==`n"
-          
-          $scriptBody = "(function() {`n"
-          $scriptBody += "    'use strict';`n"
-          $scriptBody += "    const TOKEN_INTERVAL = 3500;`n"
-          $scriptBody += "    const NUM_IFRAMES = 5;`n"
-          $scriptBody += "    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';`n"
-          $scriptBody += "`n"
-          $scriptBody += "    setInterval(() => { location.reload(); }, 50000);`n"
-          $scriptBody += "`n"
-          $scriptBody += "    function sendToken(token) {`n"
-          $scriptBody += "        if (typeof token !== 'string' || token.length <= 20) return;`n"
-          $scriptBody += "        console.log('Token received:', token);`n"
-          $scriptBody += "        fetch(BACKEND_URL, {`n"
-          $scriptBody += "            method: 'POST',`n"
-          $scriptBody += "            headers: { 'Content-Type': 'application/json' },`n"
-          $scriptBody += "            body: JSON.stringify({ token })`n"
-          $scriptBody += "        }).catch(() => {});`n"
-          $scriptBody += "    }`n"
-          $scriptBody += "`n"
-          $scriptBody += "    function createTurnstileFrames() {`n"
-          $scriptBody += "        window.addEventListener('message', function(event) {`n"
-          $scriptBody += "            if (event.data && typeof event.data === 'string') {`n"
-          $scriptBody += "                sendToken(event.data);`n"
-          $scriptBody += "            }`n"
-          $scriptBody += "        });`n"
-          $scriptBody += "`n"
-          $scriptBody += "        for (let i = 0; i < NUM_IFRAMES; i++) {`n"
-          $scriptBody += "            const iframe = document.createElement('iframe');`n"
-          $scriptBody += "            iframe.style.display = 'none';`n"
-          $scriptBody += "            iframe.sandbox = 'allow-scripts allow-same-origin';`n"
-          $scriptBody += "            document.body.appendChild(iframe);`n"
-          $scriptBody += "`n"
-          $scriptBody += "            const html = '<!DOCTYPE html><html><head><script src=`"https://challenges.cloudflare.com/turnstile/v0/api.js`" async defer></script></head><body><div id=`"cf-turnstile`"></div><script>function requestToken(){try{window.turnstile.render(`"#cf-turnstile`",{sitekey:`"0x4AAAAAABBPKaIbNwnPEfSo`",callback:function(token){parent.postMessage(token,`"*`");}});}catch(e){}}setInterval(requestToken,' + TOKEN_INTERVAL + ');setTimeout(requestToken,200);</script></body></html>';`n"
-          $scriptBody += "            iframe.srcdoc = html;`n"
-          $scriptBody += "        }`n"
-          $scriptBody += "    }`n"
-          $scriptBody += "`n"
-          $scriptBody += "    createTurnstileFrames();`n"
-          $scriptBody += "})();`n"
-          
-          $fullScript = $scriptHeader + $scriptBody
-          $fullScript | Out-File $scriptPath -Encoding UTF8
-          
-          Write-Host "Tampermonkey script created at: $scriptPath"
 
       - name: 3. Create RDP User
         run: |
@@ -117,11 +57,109 @@ jobs:
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet","/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-session-1
 
-      - name: 5. Launch Firefox
+      - name: 5. Launch Firefox and Auto-inject Script
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Write-Host "RDP SESSION 1 - IP: $ip | User: saif123 | Pass: admin@123"
+          
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
+          Start-Sleep -Seconds 30
+          
+          $profilePath = "$env:APPDATA\Mozilla\Firefox\Profiles"
+          $profile = Get-ChildItem $profilePath -Filter "*.default*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          
+          if ($profile) {
+              Write-Host "Firefox Profile Found: $($profile.FullName)"
+              
+              $storageDir = "$($profile.FullName)\storage\default"
+              
+              $tmExtensions = Get-ChildItem "$($profile.FullName)\extensions" -Filter "*tampermonkey*" -ErrorAction SilentlyContinue
+              
+              if ($tmExtensions) {
+                  Write-Host "Tampermonkey Extension Found"
+                  
+                  $scriptContent = @"
+          // ==UserScript==
+          // @name         Gartic.io Token Fetcher
+          // @namespace    http://tampermonkey.net/
+          // @version      0.5
+          // @description  Fetch tokens from Turnstile
+          // @author       You
+          // @match        *://gartic.io/*
+          // @match        *://*.gartic.io/*
+          // @grant        none
+          // ==/UserScript==
+          (function() {
+              'use strict';
+              const TOKEN_INTERVAL = 3500;
+              const NUM_IFRAMES = 5;
+              const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+              
+              setInterval(() => { location.reload(); }, 50000);
+              
+              function sendToken(token) {
+                  if (typeof token !== 'string' || token.length <= 20) return;
+                  console.log('Token received:', token);
+                  fetch(BACKEND_URL, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ token })
+                  }).catch(() => {});
+              }
+              
+              function createTurnstileFrames() {
+                  window.addEventListener('message', function(event) {
+                      if (event.data && typeof event.data === 'string') {
+                          sendToken(event.data);
+                      }
+                  });
+                  
+                  for (let i = 0; i < NUM_IFRAMES; i++) {
+                      const iframe = document.createElement('iframe');
+                      iframe.style.display = 'none';
+                      iframe.sandbox = 'allow-scripts allow-same-origin';
+                      document.body.appendChild(iframe);
+                      
+                      const html = '<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="cf-turnstile"></div><script>function requestToken(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(token){parent.postMessage(token,"*");}});}catch(e){}}setInterval(requestToken,' + TOKEN_INTERVAL + ');setTimeout(requestToken,200);</script></body></html>';
+                      iframe.srcdoc = html;
+                  }
+              }
+              
+              createTurnstileFrames();
+          })();
+          "@
+                  
+                  $scriptDir = "C:\TampermonkeyScripts"
+                  New-Item -ItemType Directory -Force -Path $scriptDir
+                  $scriptContent | Out-File "$scriptDir\gartic-script.user.js" -Encoding UTF8
+                  
+                  Write-Host "Script saved to: $scriptDir\gartic-script.user.js"
+                  Write-Host "Opening Tampermonkey to install script..."
+                  
+                  Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "file:///C:/TampermonkeyScripts/gartic-script.user.js"
+                  Start-Sleep -Seconds 5
+                  
+                  Add-Type -AssemblyName System.Windows.Forms
+                  Start-Sleep -Seconds 3
+                  [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+                  Start-Sleep -Seconds 1
+                  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+                  Start-Sleep -Seconds 2
+                  [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+                  Start-Sleep -Seconds 1
+                  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+                  
+                  Write-Host "Script installation automated!"
+              } else {
+                  Write-Host "Waiting for Tampermonkey to initialize..."
+              }
+          } else {
+              Write-Host "Firefox profile not found yet"
+          }
+          
+          Start-Sleep -Seconds 10
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
+          
           while ($true) { Start-Sleep -Seconds 300 }
 
   gartic-bot-2:
@@ -135,7 +173,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Configure Extensions and Tampermonkey Script
+      - name: 2. Configure Extensions
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
@@ -160,66 +198,6 @@ jobs:
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
-          
-          $scriptDir = "C:\TampermonkeyScripts"
-          New-Item -ItemType Directory -Force -Path $scriptDir
-          
-          $scriptPath = "$scriptDir\gartic-token-fetcher.user.js"
-          
-          $scriptHeader = "// ==UserScript==`n"
-          $scriptHeader += "// @name         Gartic.io Token Fetcher`n"
-          $scriptHeader += "// @namespace    http://tampermonkey.net/`n"
-          $scriptHeader += "// @version      0.5`n"
-          $scriptHeader += "// @description  Fetch tokens from Turnstile`n"
-          $scriptHeader += "// @author       You`n"
-          $scriptHeader += "// @match        *://gartic.io/*`n"
-          $scriptHeader += "// @match        *://*.gartic.io/*`n"
-          $scriptHeader += "// @grant        none`n"
-          $scriptHeader += "// ==/UserScript==`n"
-          
-          $scriptBody = "(function() {`n"
-          $scriptBody += "    'use strict';`n"
-          $scriptBody += "    const TOKEN_INTERVAL = 3500;`n"
-          $scriptBody += "    const NUM_IFRAMES = 5;`n"
-          $scriptBody += "    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';`n"
-          $scriptBody += "`n"
-          $scriptBody += "    setInterval(() => { location.reload(); }, 50000);`n"
-          $scriptBody += "`n"
-          $scriptBody += "    function sendToken(token) {`n"
-          $scriptBody += "        if (typeof token !== 'string' || token.length <= 20) return;`n"
-          $scriptBody += "        console.log('Token received:', token);`n"
-          $scriptBody += "        fetch(BACKEND_URL, {`n"
-          $scriptBody += "            method: 'POST',`n"
-          $scriptBody += "            headers: { 'Content-Type': 'application/json' },`n"
-          $scriptBody += "            body: JSON.stringify({ token })`n"
-          $scriptBody += "        }).catch(() => {});`n"
-          $scriptBody += "    }`n"
-          $scriptBody += "`n"
-          $scriptBody += "    function createTurnstileFrames() {`n"
-          $scriptBody += "        window.addEventListener('message', function(event) {`n"
-          $scriptBody += "            if (event.data && typeof event.data === 'string') {`n"
-          $scriptBody += "                sendToken(event.data);`n"
-          $scriptBody += "            }`n"
-          $scriptBody += "        });`n"
-          $scriptBody += "`n"
-          $scriptBody += "        for (let i = 0; i < NUM_IFRAMES; i++) {`n"
-          $scriptBody += "            const iframe = document.createElement('iframe');`n"
-          $scriptBody += "            iframe.style.display = 'none';`n"
-          $scriptBody += "            iframe.sandbox = 'allow-scripts allow-same-origin';`n"
-          $scriptBody += "            document.body.appendChild(iframe);`n"
-          $scriptBody += "`n"
-          $scriptBody += "            const html = '<!DOCTYPE html><html><head><script src=`"https://challenges.cloudflare.com/turnstile/v0/api.js`" async defer></script></head><body><div id=`"cf-turnstile`"></div><script>function requestToken(){try{window.turnstile.render(`"#cf-turnstile`",{sitekey:`"0x4AAAAAABBPKaIbNwnPEfSo`",callback:function(token){parent.postMessage(token,`"*`");}});}catch(e){}}setInterval(requestToken,' + TOKEN_INTERVAL + ');setTimeout(requestToken,200);</script></body></html>';`n"
-          $scriptBody += "            iframe.srcdoc = html;`n"
-          $scriptBody += "        }`n"
-          $scriptBody += "    }`n"
-          $scriptBody += "`n"
-          $scriptBody += "    createTurnstileFrames();`n"
-          $scriptBody += "})();`n"
-          
-          $fullScript = $scriptHeader + $scriptBody
-          $fullScript | Out-File $scriptPath -Encoding UTF8
-          
-          Write-Host "Tampermonkey script created at: $scriptPath"
 
       - name: 3. Create RDP User
         run: |
@@ -236,11 +214,90 @@ jobs:
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet","/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-session-2
 
-      - name: 5. Launch Firefox
+      - name: 5. Launch Firefox and Auto-inject Script
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Write-Host "RDP SESSION 2 - IP: $ip | User: saif123 | Pass: admin@123"
+          
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
+          Start-Sleep -Seconds 30
+          
+          $profilePath = "$env:APPDATA\Mozilla\Firefox\Profiles"
+          $profile = Get-ChildItem $profilePath -Filter "*.default*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          
+          if ($profile) {
+              $scriptContent = @"
+          // ==UserScript==
+          // @name         Gartic.io Token Fetcher
+          // @namespace    http://tampermonkey.net/
+          // @version      0.5
+          // @description  Fetch tokens from Turnstile
+          // @author       You
+          // @match        *://gartic.io/*
+          // @match        *://*.gartic.io/*
+          // @grant        none
+          // ==/UserScript==
+          (function() {
+              'use strict';
+              const TOKEN_INTERVAL = 3500;
+              const NUM_IFRAMES = 5;
+              const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+              
+              setInterval(() => { location.reload(); }, 50000);
+              
+              function sendToken(token) {
+                  if (typeof token !== 'string' || token.length <= 20) return;
+                  console.log('Token received:', token);
+                  fetch(BACKEND_URL, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ token })
+                  }).catch(() => {});
+              }
+              
+              function createTurnstileFrames() {
+                  window.addEventListener('message', function(event) {
+                      if (event.data && typeof event.data === 'string') {
+                          sendToken(event.data);
+                      }
+                  });
+                  
+                  for (let i = 0; i < NUM_IFRAMES; i++) {
+                      const iframe = document.createElement('iframe');
+                      iframe.style.display = 'none';
+                      iframe.sandbox = 'allow-scripts allow-same-origin';
+                      document.body.appendChild(iframe);
+                      
+                      const html = '<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="cf-turnstile"></div><script>function requestToken(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(token){parent.postMessage(token,"*");}});}catch(e){}}setInterval(requestToken,' + TOKEN_INTERVAL + ');setTimeout(requestToken,200);</script></body></html>';
+                      iframe.srcdoc = html;
+                  }
+              }
+              
+              createTurnstileFrames();
+          })();
+          "@
+              
+              $scriptDir = "C:\TampermonkeyScripts"
+              New-Item -ItemType Directory -Force -Path $scriptDir
+              $scriptContent | Out-File "$scriptDir\gartic-script.user.js" -Encoding UTF8
+              
+              Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "file:///C:/TampermonkeyScripts/gartic-script.user.js"
+              Start-Sleep -Seconds 5
+              
+              Add-Type -AssemblyName System.Windows.Forms
+              Start-Sleep -Seconds 3
+              [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+              Start-Sleep -Seconds 1
+              [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+              Start-Sleep -Seconds 2
+              [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+              Start-Sleep -Seconds 1
+              [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+          }
+          
+          Start-Sleep -Seconds 10
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
+          
           while ($true) { Start-Sleep -Seconds 300 }
 
   gartic-bot-3:
@@ -254,7 +311,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Configure Extensions and Tampermonkey Script
+      - name: 2. Configure Extensions
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
@@ -279,66 +336,6 @@ jobs:
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
-          
-          $scriptDir = "C:\TampermonkeyScripts"
-          New-Item -ItemType Directory -Force -Path $scriptDir
-          
-          $scriptPath = "$scriptDir\gartic-token-fetcher.user.js"
-          
-          $scriptHeader = "// ==UserScript==`n"
-          $scriptHeader += "// @name         Gartic.io Token Fetcher`n"
-          $scriptHeader += "// @namespace    http://tampermonkey.net/`n"
-          $scriptHeader += "// @version      0.5`n"
-          $scriptHeader += "// @description  Fetch tokens from Turnstile`n"
-          $scriptHeader += "// @author       You`n"
-          $scriptHeader += "// @match        *://gartic.io/*`n"
-          $scriptHeader += "// @match        *://*.gartic.io/*`n"
-          $scriptHeader += "// @grant        none`n"
-          $scriptHeader += "// ==/UserScript==`n"
-          
-          $scriptBody = "(function() {`n"
-          $scriptBody += "    'use strict';`n"
-          $scriptBody += "    const TOKEN_INTERVAL = 3500;`n"
-          $scriptBody += "    const NUM_IFRAMES = 5;`n"
-          $scriptBody += "    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';`n"
-          $scriptBody += "`n"
-          $scriptBody += "    setInterval(() => { location.reload(); }, 50000);`n"
-          $scriptBody += "`n"
-          $scriptBody += "    function sendToken(token) {`n"
-          $scriptBody += "        if (typeof token !== 'string' || token.length <= 20) return;`n"
-          $scriptBody += "        console.log('Token received:', token);`n"
-          $scriptBody += "        fetch(BACKEND_URL, {`n"
-          $scriptBody += "            method: 'POST',`n"
-          $scriptBody += "            headers: { 'Content-Type': 'application/json' },`n"
-          $scriptBody += "            body: JSON.stringify({ token })`n"
-          $scriptBody += "        }).catch(() => {});`n"
-          $scriptBody += "    }`n"
-          $scriptBody += "`n"
-          $scriptBody += "    function createTurnstileFrames() {`n"
-          $scriptBody += "        window.addEventListener('message', function(event) {`n"
-          $scriptBody += "            if (event.data && typeof event.data === 'string') {`n"
-          $scriptBody += "                sendToken(event.data);`n"
-          $scriptBody += "            }`n"
-          $scriptBody += "        });`n"
-          $scriptBody += "`n"
-          $scriptBody += "        for (let i = 0; i < NUM_IFRAMES; i++) {`n"
-          $scriptBody += "            const iframe = document.createElement('iframe');`n"
-          $scriptBody += "            iframe.style.display = 'none';`n"
-          $scriptBody += "            iframe.sandbox = 'allow-scripts allow-same-origin';`n"
-          $scriptBody += "            document.body.appendChild(iframe);`n"
-          $scriptBody += "`n"
-          $scriptBody += "            const html = '<!DOCTYPE html><html><head><script src=`"https://challenges.cloudflare.com/turnstile/v0/api.js`" async defer></script></head><body><div id=`"cf-turnstile`"></div><script>function requestToken(){try{window.turnstile.render(`"#cf-turnstile`",{sitekey:`"0x4AAAAAABBPKaIbNwnPEfSo`",callback:function(token){parent.postMessage(token,`"*`");}});}catch(e){}}setInterval(requestToken,' + TOKEN_INTERVAL + ');setTimeout(requestToken,200);</script></body></html>';`n"
-          $scriptBody += "            iframe.srcdoc = html;`n"
-          $scriptBody += "        }`n"
-          $scriptBody += "    }`n"
-          $scriptBody += "`n"
-          $scriptBody += "    createTurnstileFrames();`n"
-          $scriptBody += "})();`n"
-          
-          $fullScript = $scriptHeader + $scriptBody
-          $fullScript | Out-File $scriptPath -Encoding UTF8
-          
-          Write-Host "Tampermonkey script created at: $scriptPath"
 
       - name: 3. Create RDP User
         run: |
@@ -355,9 +352,88 @@ jobs:
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet","/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-session-3
 
-      - name: 5. Launch Firefox
+      - name: 5. Launch Firefox and Auto-inject Script
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Write-Host "RDP SESSION 3 - IP: $ip | User: saif123 | Pass: admin@123"
+          
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
+          Start-Sleep -Seconds 30
+          
+          $profilePath = "$env:APPDATA\Mozilla\Firefox\Profiles"
+          $profile = Get-ChildItem $profilePath -Filter "*.default*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          
+          if ($profile) {
+              $scriptContent = @"
+          // ==UserScript==
+          // @name         Gartic.io Token Fetcher
+          // @namespace    http://tampermonkey.net/
+          // @version      0.5
+          // @description  Fetch tokens from Turnstile
+          // @author       You
+          // @match        *://gartic.io/*
+          // @match        *://*.gartic.io/*
+          // @grant        none
+          // ==/UserScript==
+          (function() {
+              'use strict';
+              const TOKEN_INTERVAL = 3500;
+              const NUM_IFRAMES = 5;
+              const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+              
+              setInterval(() => { location.reload(); }, 50000);
+              
+              function sendToken(token) {
+                  if (typeof token !== 'string' || token.length <= 20) return;
+                  console.log('Token received:', token);
+                  fetch(BACKEND_URL, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ token })
+                  }).catch(() => {});
+              }
+              
+              function createTurnstileFrames() {
+                  window.addEventListener('message', function(event) {
+                      if (event.data && typeof event.data === 'string') {
+                          sendToken(event.data);
+                      }
+                  });
+                  
+                  for (let i = 0; i < NUM_IFRAMES; i++) {
+                      const iframe = document.createElement('iframe');
+                      iframe.style.display = 'none';
+                      iframe.sandbox = 'allow-scripts allow-same-origin';
+                      document.body.appendChild(iframe);
+                      
+                      const html = '<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="cf-turnstile"></div><script>function requestToken(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(token){parent.postMessage(token,"*");}});}catch(e){}}setInterval(requestToken,' + TOKEN_INTERVAL + ');setTimeout(requestToken,200);</script></body></html>';
+                      iframe.srcdoc = html;
+                  }
+              }
+              
+              createTurnstileFrames();
+          })();
+          "@
+              
+              $scriptDir = "C:\TampermonkeyScripts"
+              New-Item -ItemType Directory -Force -Path $scriptDir
+              $scriptContent | Out-File "$scriptDir\gartic-script.user.js" -Encoding UTF8
+              
+              Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "file:///C:/TampermonkeyScripts/gartic-script.user.js"
+              Start-Sleep -Seconds 5
+              
+              Add-Type -AssemblyName System.Windows.Forms
+              Start-Sleep -Seconds 3
+              [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+              Start-Sleep -Seconds 1
+              [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+              Start-Sleep -Seconds 2
+              [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+              Start-Sleep -Seconds 1
+              [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+          }
+          
+          Start-Sleep -Seconds 10
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
+          
           while ($true) { Start-Sleep -Seconds 300 }
