@@ -8,7 +8,6 @@ jobs:
   gartic-bot:
     runs-on: windows-2019
     timeout-minutes: 360
-    
     strategy:
       max-parallel: 3
       fail-fast: false
@@ -81,16 +80,9 @@ jobs:
 
       - name: 5. Launch Firefox & Keep Alive
         run: |
-          # استدعاء مكتبات الويندوز اللازمة لتحريك الماوس
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
-          
-          # تشغيل المتصفح
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
-          
-          Write-Host "✅ RDP Started. Moving mouse to prevent idle..."
-          
-          # حلقة لا نهائية لتحريك الماوس كل 5 دقائق
           while ($true) {
             $x = Get-Random -Minimum 100 -Maximum 800
             $y = Get-Random -Minimum 100 -Maximum 600
