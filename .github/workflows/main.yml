@@ -9,8 +9,7 @@ jobs:
     runs-on: windows-2019
     timeout-minutes: 360
     strategy:
-      max-parallel: 3
-      fail-fast: false
+      fail-fast: false # منع إلغاء الأجهزة الأخرى إذا فشل واحد
       matrix:
         instance: [1, 2, 3]
     
@@ -47,8 +46,12 @@ jobs:
         run: |
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
+          # محاولة إنشاء المستخدم وتجاهل الخطأ إذا كان موجوداً مسبقاً
+          try {
+              New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+              Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
+          } catch {}
+          
           $desktopPath = "C:\Users\saif123\Desktop"
           if (!(Test-Path $desktopPath)) { New-Item -ItemType Directory -Force -Path $desktopPath }
           $scriptContent = @"
@@ -74,6 +77,7 @@ jobs:
 
       - name: 4. Start Tailscale
         run: |
+          # تحميل وتثبيت Tailscale مع محاولات إعادة الاتصال
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-rdp-${{ matrix.instance }}
@@ -83,6 +87,7 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
+          Write-Host "✅ Instance ${{ matrix.instance }} is Ready!"
           while ($true) {
             $x = Get-Random -Minimum 100 -Maximum 800
             $y = Get-Random -Minimum 100 -Maximum 600
@@ -97,6 +102,7 @@ jobs:
     steps:
       - name: Trigger New Run
         run: |
+          # تأكد أن اسم الملف هو main.yml أو قم بتغييره هنا
           curl -X POST \
           -H "Accept: application/vnd.github+json" \
           -H "Authorization: Bearer ${{ secrets.MY_GITHUB_PAT }}" \
