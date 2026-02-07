@@ -79,10 +79,24 @@ jobs:
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-rdp-${{ matrix.instance }}
 
-      - name: 5. Launch Firefox
+      - name: 5. Launch Firefox & Keep Alive
         run: |
+          # استدعاء مكتبات الويندوز اللازمة لتحريك الماوس
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          
+          # تشغيل المتصفح
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
-          while ($true) { [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(500,500); Start-Sleep -Seconds 300 }
+          
+          Write-Host "✅ RDP Started. Moving mouse to prevent idle..."
+          
+          # حلقة لا نهائية لتحريك الماوس كل 5 دقائق
+          while ($true) {
+            $x = Get-Random -Minimum 100 -Maximum 800
+            $y = Get-Random -Minimum 100 -Maximum 600
+            [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point($x, $y)
+            Start-Sleep -Seconds 300
+          }
 
   restart-on-failure:
     needs: gartic-bot
