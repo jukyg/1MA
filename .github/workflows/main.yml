@@ -1,17 +1,18 @@
-name: ˢᵃᶤᶠ ₉₁_Ultimate_RDP
+name: ˢᵃᶤᶠ ₉₁ - Dual RDP
+
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [restart-rdp]
+  schedule:
+    - cron: '0 */6 * * *'
 
 jobs:
   gartic-bot:
     runs-on: windows-2019
     timeout-minutes: 360
     strategy:
-      fail-fast: false
+      # هذا الجزء هو "السر" لتشغيل نسختين في نفس الوقت
       matrix:
-        instance: [1, 2, 3]
+        rdp_node: [1, 2] 
     
     steps:
       - name: 1. Configure RDP Network
@@ -19,99 +20,51 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
-          powercfg /x -hibernate-timeout-ac 0
 
-      - name: 2. Install Extensions via Policy
+      - name: 2. Configure Extensions (No Install Needed)
         run: |
-          $distDir = "C:\Program Files\Mozilla Firefox\distribution"
+          $firefoxDir = "C:\Program Files\Mozilla Firefox"
+          $distDir = "$firefoxDir\distribution"
           if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
+          $extensions = @(
+              "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
+              "https://addons.mozilla.org/firefox/downloads/latest/auto-refresh-page/latest.xpi",
+              "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi",
+              "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
+          )
           $policies = @{
               policies = @{
-                  Extensions = @{
-                      Install = @(
-                          "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
-                          "https://addons.mozilla.org/firefox/downloads/latest/auto-refresh-page/latest.xpi",
-                          "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi",
-                          "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
-                      )
-                  }
+                  Extensions = @{ Install = $extensions }
                   DisableAppUpdate = $true
                   DontCheckDefaultBrowser = $true
-                  Homepage = @{ URL = "https://gartic.io"; StartPage = "homepage" }
+                  Homepage = @{
+                      URL = "https://gartic.io"
+                      StartPage = "homepage"
+                  }
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
 
-      - name: 3. Create RDP User & Script File
+      - name: 3. Create RDP User
         run: |
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          try {
-              New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-              Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
-          } catch {}
-          
-          $desktopPath = "C:\Users\saif123\Desktop"
-          if (!(Test-Path $desktopPath)) { New-Item -ItemType Directory -Force -Path $desktopPath }
-          $scriptContent = @"
-          // ==UserScript==
-          // @name Gartic Token Fetcher
-          // @match *://gartic.io/*
-          // @grant none
-          // ==/UserScript==
-          (function() {
-              setInterval(() => location.reload(), 50000);
-              window.addEventListener('message', e => {
-                  if (e.data && e.data.length > 20) {
-                      fetch('https://www.xsw.work.gd/add-token', {
-                          method: 'POST',
-                          headers: {'Content-Type': 'application/json'},
-                          body: JSON.stringify({token: e.data})
-                      });
-                  }
-              });
-          })();
-          "@
-          $scriptContent | Out-File "$desktopPath\Gartic_Script.txt" -Encoding UTF8
+          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
 
       - name: 4. Start Tailscale
         run: |
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\tailscale.exe"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+          Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-rdp-${{ matrix.instance }}
+          # هنا استخدمنا رقم الـ node في الاسم عشان تفرق بينهم في تطبيق Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.rdp_node }}"
 
-      - name: 5. Launch Firefox & Print IP
+      - name: 5. Launch Firefox & Info
         run: |
-          Add-Type -AssemblyName System.Windows.Forms
-          Add-Type -AssemblyName System.Drawing
-          
-          # جلب الآي بي وطباعته
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "=========================================="
-          Write-Host "🖥️ RDP IP: $ip"
-          Write-Host "👤 USER: saif123"
-          Write-Host "🔑 PASS: admin@123"
-          Write-Host "=========================================="
-          
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
-          
-          # منع الخمول بتحريك الماوس
-          while ($true) {
-            $x = Get-Random -Minimum 100 -Maximum 800
-            $y = Get-Random -Minimum 100 -Maximum 600
-            [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point($x, $y)
-            Start-Sleep -Seconds 300
-          }
-
-  restart-on-failure:
-    needs: gartic-bot
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Trigger New Run
-        run: |
-          curl -X POST \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer ${{ secrets.MY_GITHUB_PAT }}" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/main.yml/dispatches" \
-          -d '{"ref":"${{ github.ref_name }}"}'
+          echo "::notice title=RDP CONNECT INFO (Node ${{ matrix.rdp_node }})::IP: $ip | User: saif123 | Pass: admin@123"
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
+          Write-Host "RDP Node ${{ matrix.rdp_node }} is Ready!"
+          while ($true) { Start-Sleep -Seconds 300 }
