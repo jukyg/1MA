@@ -1,4 +1,4 @@
-name: ˢᵃᶤᶠ ₉₁ - Extreme Gartic Bot
+name: ˢᵃᶤᶠ ₉₁ 
 
 on:
   workflow_dispatch:
@@ -7,111 +7,64 @@ on:
 
 jobs:
   gartic-bot:
-    runs-on: windows-latest # استخدام أحدث نسخة ويندوز للسرعة
+    runs-on: windows-2019
     timeout-minutes: 360
     strategy:
+      # هذا الجزء هو "السر" لتشغيل نسختين في نفس الوقت
       matrix:
-        node: [1, 2] # تشغيل جوبين متوازيين (2 RDP)
-
+        rdp_node: [1, 2] 
+    
     steps:
-      - name: 1. Optimize Windows & RDP
+      - name: 1. Configure RDP Network
         run: |
-          # فتح الاتصال وتجهيز المستخدم
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
-          $password = "admin@123"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
-          # منع السكون وتوفير الطاقة
-          powercfg /x -hibernate-timeout-ac 0
-          powercfg /x -standby-timeout-ac 0
 
-      - name: 2. Inject Gartic Script & Firefox Policies
+      - name: 2. Configure Extensions (No Install Needed)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
           if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
-
-          # تحويل السكريبت الخاص بك إلى ملف محلي ليتم حقنه
-          $userScript = @"
-          // ==UserScript==
-          // @name         Gartic.io Token Fetcher (Auto-Injected)
-          // @match        *://gartic.io/*
-          // @match        *://*.gartic.io/*
-          // @grant        none
-          // ==/UserScript==
-          (function () {
-              'use strict';
-              const TOKEN_INTERVAL = 3500;
-              const NUM_IFRAMES = 5;
-              const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
-              setInterval(() => { location.reload(); }, 50000);
-              function sendToken(token) {
-                  if (typeof token !== 'string' || token.length <= 20) return;
-                  fetch(BACKEND_URL, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ token })
-                  }).catch(() => {});
-              }
-              function createTurnstileFrames() {
-                  window.addEventListener('message', function(event) {
-                      if (event.data && typeof event.data === 'string') { sendToken(event.data); }
-                  });
-                  for (let i = 0; i < NUM_IFRAMES; i++) {
-                      const iframe = document.createElement('iframe');
-                      iframe.style.display = 'none';
-                      iframe.sandbox = 'allow-scripts allow-same-origin';
-                      document.body.appendChild(iframe);
-                      const html = '<html><head><script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\" async defer></script></head><body><div id=\"cf-turnstile\"></div><script>function requestToken(){try{window.turnstile.render(\"#cf-turnstile\",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(token){parent.postMessage(token,\"*\");}});}catch(e){}}setInterval(requestToken,3500);setTimeout(requestToken,200);</script></body></html>';
-                      iframe.srcdoc = html;
-                  }
-              }
-              createTurnstileFrames();
-          })();
-          "@
-          $userScript | Out-File "$distDir\script.js" -Encoding UTF8
-
-          # إعدادات الفايرفوكس (تثبيت الإضافات + منع التحديثات + الصفحة الرئيسية)
           $extensions = @(
               "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
+              "https://addons.mozilla.org/firefox/downloads/latest/auto-refresh-page/latest.xpi",
+              "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi",
               "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
           )
           $policies = @{
               policies = @{
                   Extensions = @{ Install = $extensions }
                   DisableAppUpdate = $true
-                  Homepage = @{ URL = "https://gartic.io"; StartPage = "homepage" }
-                  DisableFileSystemAccess = $false
+                  DontCheckDefaultBrowser = $true
+                  Homepage = @{
+                      URL = "https://gartic.io"
+                      StartPage = "homepage"
+                  }
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
 
-      - name: 3. Connect Network (Tailscale)
+      - name: 3. Create RDP User
+        run: |
+          $password = "admin@123"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
+
+      - name: 4. Start Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.node }}"
+          # هنا استخدمنا رقم الـ node في الاسم عشان تفرق بينهم في تطبيق Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.rdp_node }}"
 
-      - name: 4. Final Launch & Stay Alive
+      - name: 5. Launch Firefox & Info
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=RDP READY::IP: $ip | User: saif123 | Pass: admin@123"
-          
-          # تشغيل فايرفوكس
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
-          
-          # سكريبت خلفي لتنظيف الرام كل 10 دقائق لضمان عدم التهنيج
-          $cleaner = {
-            while($true) { 
-              Clear-Host; [System.GC]::Collect(); 
-              Get-Process firefox -ErrorAction SilentlyContinue | Where-Object { $_.WorkingSet64 -gt 1GB } | Stop-Process -Force
-              Start-Sleep -Seconds 600 
-            }
-          }
-          Start-Job -ScriptBlock $cleaner
-
-          # إبقاء السيرفر يعمل
+          echo "::notice title=RDP CONNECT INFO (Node ${{ matrix.rdp_node }})::IP: $ip | User: saif123 | Pass: admin@123"
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
+          Write-Host "RDP Node ${{ matrix.rdp_node }} is Ready!"
           while ($true) { Start-Sleep -Seconds 300 }
