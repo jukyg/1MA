@@ -1,34 +1,40 @@
 name: ˢᵃᶤᶠ ₉₁
-
 on:
-  workflow_dispatch:      # عشان تشغله يدوي لو حبيت
-  schedule:
-    - cron: '0 */12 * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [restart-rdp]
+
 jobs:
   gartic-bot:
     runs-on: windows-2019
-    timeout-minutes: 360  # 6 ساعات
-
+    timeout-minutes: 360
+    
+    strategy:
+      max-parallel: 3
+      fail-fast: false
+      matrix:
+        instance: [1, 2, 3]
+    
     steps:
       - name: 1. Configure RDP Network
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
-
-      - name: 2. Configure Extensions (No Install Needed)
+      
+      - name: 2. Configure Extensions
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
           if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
-
+          
           $extensions = @(
               "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
               "https://addons.mozilla.org/firefox/downloads/latest/auto-refresh-page/latest.xpi",
               "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi",
               "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
           )
-
+          
           $policies = @{
               policies = @{
                   Extensions = @{ Install = $extensions }
@@ -41,32 +47,145 @@ jobs:
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
-
-      - name: 3. Create RDP User
+      
+      - name: 3. Install Tampermonkey Script
+        run: |
+          # إنشاء مجلد الـ Tampermonkey Scripts
+          $scriptDir = "$env:APPDATA\Mozilla\Firefox\Tampermonkey\scripts"
+          if (!(Test-Path $scriptDir)) { New-Item -ItemType Directory -Force -Path $scriptDir }
+          
+          # كتابة السكريبت
+          $script = @'
+// ==UserScript==
+// @name         Gartic.io Token Fetcher (Optimized Reload Version)
+// @namespace    http://tampermonkey.net/
+// @version      0.5
+// @description  Fetch maximum tokens from Turnstile with minimal data usage + auto reload every 50s
+// @author       You
+// @match        *://gartic.io/*
+// @match        *://*.gartic.io/*
+// @grant        none
+// ==/UserScript==
+(function () {
+    'use strict';
+    const TOKEN_INTERVAL = 3500;
+    const NUM_IFRAMES = 5;
+    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+    
+    setInterval(() => {
+        location.reload();
+    }, 50000);
+    
+    function sendToken(token) {
+        if (typeof token !== 'string' || token.length <= 20) return;
+        console.log("Token received:", token);
+        fetch(BACKEND_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        }).catch(() => {});
+    }
+    
+    function createTurnstileFrames() {
+        window.addEventListener('message', function(event) {
+            if (event.data && typeof event.data === 'string') {
+                sendToken(event.data);
+            }
+        });
+        
+        for (let i = 0; i < NUM_IFRAMES; i++) {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            document.body.appendChild(iframe);
+            
+            const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                </head>
+                <body>
+                    <div id="cf-turnstile"></div>
+                    <script>
+                        function requestToken() {
+                            try {
+                                window.turnstile.render('#cf-turnstile', {
+                                    sitekey: '0x4AAAAAABBPKaIbNwnPEfSo',
+                                    callback: function(token) {
+                                        parent.postMessage(token, '*');
+                                    }
+                                });
+                            } catch (e) {}
+                        }
+                        setInterval(requestToken, ${TOKEN_INTERVAL});
+                        setTimeout(requestToken, 200);
+                    </script>
+                </body>
+                </html>
+            `;
+            iframe.srcdoc = html;
+        }
+    }
+    
+    createTurnstileFrames();
+})();
+'@
+          
+          $script | Out-File "$scriptDir\gartic-token-fetcher.user.js" -Encoding UTF8
+          Write-Host "✅ Tampermonkey script installed!"
+      
+      - name: 4. Create RDP User
         run: |
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
           New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
-          
-          echo "RDP_USER=saif123" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
-
-      - name: 4. Start Tailscale
+          Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123" -ErrorAction SilentlyContinue
+      
+      - name: 5. Start Tailscale
         run: |
+          $instance = "${{ matrix.instance }}"
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-fast
-
-      - name: 5. Launch Firefox
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gartic-rdp-$instance
+      
+      - name: 6. Launch Firefox with Gartic.io
         run: |
+          $instance = "${{ matrix.instance }}"
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=RDP CONNECT INFO::IP: $ip | User: saif123 | Pass: admin@123"
+          echo "::notice title=🖥️ RDP-$instance::IP: $ip | User: saif123 | Pass: admin@123"
           
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
+          # فتح Firefox مع صفحة Gartic.io
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "https://gartic.io"
           
-          Write-Host "RDP Ready! Will restart automatically every 6 hours."
+          Write-Host "✅ RDP #$instance شغال مع Gartic.io!"
+          Write-Host "🎯 Tampermonkey script يشتغل تلقائي"
+          
           while ($true) { Start-Sleep -Seconds 300 }
+
+  # ═══════════════════════════════════════
+  # لما يطفي أي واحد، يشغل 3 جداد
+  # ═══════════════════════════════════════
+  restart-on-failure:
+    needs: gartic-bot
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Trigger New Run (3 New Instances)
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/$(basename ${{ github.workflow_ref }})/dispatches \
+            -d '{"ref":"${{ github.ref_name }}"}'
+          
+          echo "🔄 تم تشغيل 3 أجهزة جديدة تلقائياً!"
