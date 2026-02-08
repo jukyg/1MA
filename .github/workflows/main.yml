@@ -13,600 +13,181 @@ jobs:
         rdp_node: [1, 2]
     
     steps:
-      - name: Step 1 - Configure RDP Network
+      - name: Step 1 - Configure RDP
         run: |
-          Write-Host "🔧 Configuring RDP..." -ForegroundColor Cyan
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           netsh advfirewall firewall add rule name="RDP-Allow" dir=in action=allow protocol=TCP localport=3389
-          Write-Host "✅ RDP Configured!" -ForegroundColor Green
 
-      - name: Step 2 - Create Administrator User
+      - name: Step 2 - Create User
         run: |
-          Write-Host "👤 Creating RDP User..." -ForegroundColor Cyan
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          
           if (Get-LocalUser -Name "saif123" -ErrorAction SilentlyContinue) {
               Remove-LocalUser -Name "saif123" -ErrorAction SilentlyContinue
           }
-          
-          New-LocalUser -Name "saif123" -Password $securePass -FullName "Saif Admin" -Description "RDP Admin User" -AccountNeverExpires -PasswordNeverExpires -ErrorAction SilentlyContinue
+          New-LocalUser -Name "saif123" -Password $securePass -FullName "Saif Admin" -AccountNeverExpires -PasswordNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123" -ErrorAction SilentlyContinue
-          
           Set-LocalUser -Name "saif123" -PasswordNeverExpires $true
-          Write-Host "✅ User 'saif123' Created!" -ForegroundColor Green
 
-      - name: Step 3 - Optimize Windows Performance
+      - name: Step 3 - Optimize System
         run: |
-          Write-Host "⚡ Optimizing Windows..." -ForegroundColor Cyan
-          
-          # Disable Windows Defender (for performance)
           Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
-          
-          # Disable Windows Updates
           Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
           Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
-          
-          # Disable unnecessary services
-          $services = @('DiagTrack', 'dmwappushservice', 'SysMain')
-          foreach ($svc in $services) {
-              Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-              Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-          }
-          
-          # Set High Performance Power Plan
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          
-          Write-Host "✅ Windows Optimized!" -ForegroundColor Green
 
-      - name: Step 4 - Create Token Fetcher HTML Files
+      - name: Step 4 - Create Token Fetcher Files
+        shell: pwsh
         run: |
-          Write-Host "📄 Creating Token Fetcher Pages..." -ForegroundColor Cyan
-          
           New-Item -ItemType Directory -Force -Path "C:\TokenFetcher" | Out-Null
           
-          $htmlTemplate = @'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gartic Token Fetcher - Instance {INSTANCE}</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .header {
-            background: rgba(255,255,255,0.1);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            backdrop-filter: blur(10px);
-        }
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .stat-card {
-            background: rgba(255,255,255,0.15);
-            padding: 20px;
-            border-radius: 10px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .stat-label {
-            font-size: 14px;
-            opacity: 0.8;
-            margin-bottom: 5px;
-        }
-        .stat-value {
-            font-size: 32px;
-            font-weight: bold;
-            color: #00ff88;
-        }
-        .log {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 10px;
-            max-height: 400px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-        }
-        .log-entry {
-            padding: 5px;
-            margin-bottom: 5px;
-            border-left: 3px solid #00ff88;
-            padding-left: 10px;
-        }
-        .status-online {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background: #00ff88;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🚀 Gartic Token Fetcher - Instance {INSTANCE}</h1>
-            <p><span class="status-online"></span> Status: <span id="status">Active</span></p>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-label">📊 Tokens Sent</div>
-                <div class="stat-value" id="tokenCount">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">🔄 Auto-Reload In</div>
-                <div class="stat-value" id="reloadTimer">50</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">⚡ Active Workers</div>
-                <div class="stat-value" id="workerCount">6</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">🌐 Backend Status</div>
-                <div class="stat-value" id="backendStatus">✅</div>
-            </div>
-        </div>
-        
-        <div class="log" id="logContainer">
-            <div class="log-entry">🟢 System initialized...</div>
-        </div>
-    </div>
-    
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-    
-    <script>
-    (function() {
-        'use strict';
-        
-        // Configuration
-        const CONFIG = {
-            TOKEN_INTERVAL: 3500,
-            NUM_WORKERS: 6,
-            RELOAD_INTERVAL: 50000,
-            BACKEND_URL: 'https://www.xsw.work.gd/add-token',
-            TURNSTILE_SITEKEY: '0x4AAAAAABBPKaIbNwnPEfSo'
-        };
-        
-        // State
-        let tokenCount = 0;
-        let reloadTimer = 50;
-        let workerStatus = new Array(CONFIG.NUM_WORKERS).fill(false);
-        
-        // DOM Elements
-        const elements = {
-            tokenCount: document.getElementById('tokenCount'),
-            reloadTimer: document.getElementById('reloadTimer'),
-            workerCount: document.getElementById('workerCount'),
-            backendStatus: document.getElementById('backendStatus'),
-            logContainer: document.getElementById('logContainer')
-        };
-        
-        // Logging
-        function log(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const emoji = type === 'success' ? '✅' : type === 'error' ? '❌' : '🔵';
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.textContent = `[${timestamp}] ${emoji} ${message}`;
-            elements.logContainer.insertBefore(entry, elements.logContainer.firstChild);
-            
-            // Keep only last 50 entries
-            while (elements.logContainer.children.length > 50) {
-                elements.logContainer.removeChild(elements.logContainer.lastChild);
-            }
-            
-            console.log(`[${timestamp}] ${message}`);
-        }
-        
-        // Update UI
-        function updateUI() {
-            elements.tokenCount.textContent = tokenCount;
-            elements.reloadTimer.textContent = reloadTimer;
-            elements.workerCount.textContent = workerStatus.filter(s => s).length + '/' + CONFIG.NUM_WORKERS;
-        }
-        
-        // Send token to backend
-        async function sendToken(token, workerId) {
-            if (typeof token !== 'string' || token.length <= 20) {
-                log(`Worker ${workerId}: Invalid token format`, 'error');
-                return false;
-            }
-            
-            try {
-                const response = await fetch(CONFIG.BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ token }),
-                    signal: AbortSignal.timeout(5000)
-                });
-                
-                if (response.ok) {
-                    tokenCount++;
-                    updateUI();
-                    log(`Worker ${workerId}: Token sent successfully (#${tokenCount})`, 'success');
-                    elements.backendStatus.textContent = '✅';
-                    return true;
-                } else {
-                    log(`Worker ${workerId}: Backend error ${response.status}`, 'error');
-                    elements.backendStatus.textContent = '⚠️';
-                    return false;
-                }
-            } catch (error) {
-                log(`Worker ${workerId}: Network error - ${error.message}`, 'error');
-                elements.backendStatus.textContent = '❌';
-                return false;
-            }
-        }
-        
-        // Create Turnstile worker
-        function createWorker(workerId) {
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.sandbox = 'allow-scripts allow-same-origin';
-            iframe.id = `worker-${workerId}`;
-            document.body.appendChild(iframe);
-            
-            const workerHTML = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer><\/script>
-                </head>
-                <body>
-                    <div id="turnstile-container"></div>
-                    <script>
-                        let isReady = false;
-                        
-                        function initTurnstile() {
-                            if (!window.turnstile) {
-                                setTimeout(initTurnstile, 100);
-                                return;
-                            }
-                            
-                            try {
-                                window.turnstile.render('#turnstile-container', {
-                                    sitekey: '${CONFIG.TURNSTILE_SITEKEY}',
-                                    callback: function(token) {
-                                        parent.postMessage({
-                                            type: 'token',
-                                            workerId: ${workerId},
-                                            token: token
-                                        }, '*');
-                                    },
-                                    'error-callback': function() {
-                                        parent.postMessage({
-                                            type: 'error',
-                                            workerId: ${workerId}
-                                        }, '*');
-                                    }
-                                });
-                                
-                                parent.postMessage({
-                                    type: 'ready',
-                                    workerId: ${workerId}
-                                }, '*');
-                                
-                                isReady = true;
-                            } catch (error) {
-                                parent.postMessage({
-                                    type: 'error',
-                                    workerId: ${workerId},
-                                    message: error.message
-                                }, '*');
-                            }
-                        }
-                        
-                        // Auto-refresh worker
-                        setInterval(() => {
-                            if (isReady && window.turnstile) {
-                                try {
-                                    window.turnstile.reset('#turnstile-container');
-                                } catch (e) {}
-                            }
-                        }, ${CONFIG.TOKEN_INTERVAL});
-                        
-                        setTimeout(initTurnstile, ${100 + workerId * 50});
-                    <\/script>
-                </body>
-                </html>
-            `;
-            
-            iframe.srcdoc = workerHTML;
-            log(`Worker ${workerId}: Initialized`);
-        }
-        
-        // Message handler
-        window.addEventListener('message', async function(event) {
-            if (!event.data || typeof event.data !== 'object') return;
-            
-            const { type, workerId, token, message } = event.data;
-            
-            switch (type) {
-                case 'ready':
-                    workerStatus[workerId] = true;
-                    updateUI();
-                    log(`Worker ${workerId}: Ready`);
-                    break;
-                    
-                case 'token':
-                    await sendToken(token, workerId);
-                    break;
-                    
-                case 'error':
-                    workerStatus[workerId] = false;
-                    updateUI();
-                    log(`Worker ${workerId}: Error - ${message || 'Unknown'}`, 'error');
-                    break;
-            }
-        });
-        
-        // Reload timer
-        setInterval(() => {
-            reloadTimer--;
-            updateUI();
-            
-            if (reloadTimer <= 0) {
-                log('🔄 Auto-reloading page...');
-                setTimeout(() => location.reload(), 500);
-            }
-        }, 1000);
-        
-        // Initialize workers
-        function initializeWorkers() {
-            log(`🚀 Starting ${CONFIG.NUM_WORKERS} workers...`);
-            
-            for (let i = 0; i < CONFIG.NUM_WORKERS; i++) {
-                setTimeout(() => createWorker(i), i * 200);
-            }
-        }
-        
-        // Start system
-        setTimeout(initializeWorkers, 1000);
-        log('✅ Token Fetcher System Online');
-        
-    })();
-    </script>
-</body>
-</html>
-'@
+          $html = @"
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="UTF-8">
+              <title>Token Fetcher</title>
+              <style>
+                  body { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #fff; font-family: Arial; padding: 20px; }
+                  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }
+                  .card { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; }
+                  .value { font-size: 32px; font-weight: bold; color: #00ff88; }
+              </style>
+          </head>
+          <body>
+              <h1>Gartic Token Fetcher</h1>
+              <div class="stats">
+                  <div class="card"><div>Tokens Sent</div><div class="value" id="count">0</div></div>
+                  <div class="card"><div>Reload In</div><div class="value" id="timer">50</div></div>
+                  <div class="card"><div>Workers</div><div class="value" id="workers">6</div></div>
+                  <div class="card"><div>Status</div><div class="value" id="status">OK</div></div>
+              </div>
+              <div id="log" style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; max-height: 400px; overflow-y: auto; font-family: monospace;"></div>
+              
+              <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+              <script>
+              (function() {
+                  const INTERVAL = 3500;
+                  const WORKERS = 6;
+                  const BACKEND = 'https://www.xsw.work.gd/add-token';
+                  const SITEKEY = '0x4AAAAAABBPKaIbNwnPEfSo';
+                  
+                  let count = 0;
+                  let timer = 50;
+                  
+                  function log(msg) {
+                      const el = document.getElementById('log');
+                      const time = new Date().toLocaleTimeString();
+                      el.innerHTML = '<div>[' + time + '] ' + msg + '</div>' + el.innerHTML;
+                  }
+                  
+                  function sendToken(token, id) {
+                      if (!token || token.length < 20) return;
+                      fetch(BACKEND, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ token: token })
+                      }).then(function(r) {
+                          if (r.ok) {
+                              count++;
+                              document.getElementById('count').textContent = count;
+                              log('Worker ' + id + ': Token sent (#' + count + ')');
+                          }
+                      }).catch(function() {});
+                  }
+                  
+                  window.addEventListener('message', function(e) {
+                      if (e.data && e.data.token) {
+                          sendToken(e.data.token, e.data.id);
+                      }
+                  });
+                  
+                  for (let i = 0; i < WORKERS; i++) {
+                      const iframe = document.createElement('iframe');
+                      iframe.style.display = 'none';
+                      iframe.sandbox = 'allow-scripts allow-same-origin';
+                      document.body.appendChild(iframe);
+                      
+                      const code = '<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="t"></div><script>function init(){if(!window.turnstile){setTimeout(init,100);return;}try{window.turnstile.render("#t",{sitekey:"' + SITEKEY + '",callback:function(t){parent.postMessage({token:t,id:' + i + '},"*");}});}catch(e){}}setInterval(function(){if(window.turnstile)try{window.turnstile.reset("#t");}catch(e){}}, ' + INTERVAL + ');setTimeout(init,' + (100 + i * 50) + ');</script></body></html>';
+                      
+                      iframe.srcdoc = code;
+                  }
+                  
+                  setInterval(function() {
+                      timer--;
+                      document.getElementById('timer').textContent = timer;
+                      if (timer <= 0) location.reload();
+                  }, 1000);
+                  
+                  log('System started with ' + WORKERS + ' workers');
+              })();
+              </script>
+          </body>
+          </html>
+          "@
           
-          # Create 2 instances
-          for ($i = 1; $i -le 2; $i++) {
-              $html = $htmlTemplate -replace '{INSTANCE}', $i
-              $html | Out-File "C:\TokenFetcher\instance$i.html" -Encoding UTF8
-          }
-          
-          Write-Host "✅ Created 2 Token Fetcher Instances!" -ForegroundColor Green
+          $html | Out-File "C:\TokenFetcher\page1.html" -Encoding UTF8
+          $html | Out-File "C:\TokenFetcher\page2.html" -Encoding UTF8
 
-      - name: Step 5 - Create Auto-Start PowerShell Script
+      - name: Step 5 - Create Startup Script
         run: |
-          Write-Host "📝 Creating Startup Script..." -ForegroundColor Cyan
+          $script = @"
+          Start-Sleep -Seconds 5
+          Start-Process 'C:\Program Files\Mozilla Firefox\firefox.exe' -ArgumentList 'file:///C:/TokenFetcher/page1.html'
+          Start-Sleep -Seconds 2
+          Start-Process 'C:\Program Files\Mozilla Firefox\firefox.exe' -ArgumentList 'file:///C:/TokenFetcher/page2.html'
+          "@
           
-          $startupScript = @'
-# ========================================
-# Gartic Token Fetcher - Auto Startup
-# ========================================
+          $script | Out-File "C:\Start.ps1" -Encoding UTF8
 
-Start-Sleep -Seconds 5
-
-$firefox = "C:\Program Files\Mozilla Firefox\firefox.exe"
-
-# Check if Firefox exists
-if (!(Test-Path $firefox)) {
-    Write-Host "Firefox not found!" -ForegroundColor Red
-    exit 1
-}
-
-# Launch Instance 1
-Write-Host "🚀 Launching Instance 1..." -ForegroundColor Cyan
-Start-Process $firefox -ArgumentList "file:///C:/TokenFetcher/instance1.html"
-
-# Wait
-Start-Sleep -Seconds 3
-
-# Launch Instance 2
-Write-Host "🚀 Launching Instance 2..." -ForegroundColor Cyan
-Start-Process $firefox -ArgumentList "file:///C:/TokenFetcher/instance2.html"
-
-Write-Host "✅ Both instances launched!" -ForegroundColor Green
-'@
-          
-          $startupScript | Out-File "C:\StartTokenFetcher.ps1" -Encoding UTF8
-          
-          Write-Host "✅ Startup Script Created!" -ForegroundColor Green
-
-      - name: Step 6 - Create Windows Scheduled Task
+      - name: Step 6 - Create Scheduled Task
         run: |
-          Write-Host "⏰ Creating Scheduled Task..." -ForegroundColor Cyan
-          
-          # Remove existing task if exists
-          Unregister-ScheduledTask -TaskName "GarticTokenFetcher" -Confirm:$false -ErrorAction SilentlyContinue
-          
-          # Create action
-          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\StartTokenFetcher.ps1"
-          
-          # Create trigger (at logon)
+          Unregister-ScheduledTask -TaskName "TokenFetcher" -Confirm:$false -ErrorAction SilentlyContinue
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\Start.ps1"
           $trigger = New-ScheduledTaskTrigger -AtLogOn -User "saif123"
-          
-          # Create settings
-          $settings = New-ScheduledTaskSettingsSet `
-              -AllowStartIfOnBatteries `
-              -DontStopIfGoingOnBatteries `
-              -StartWhenAvailable `
-              -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
-              -RestartCount 3 `
-              -RestartInterval (New-TimeSpan -Minutes 1)
-          
-          # Register task
-          Register-ScheduledTask `
-              -TaskName "GarticTokenFetcher" `
-              -Action $action `
-              -Trigger $trigger `
-              -Settings $settings `
-              -User "saif123" `
-              -RunLevel Highest `
-              -Force
-          
-          Write-Host "✅ Scheduled Task Created!" -ForegroundColor Green
+          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+          Register-ScheduledTask -TaskName "TokenFetcher" -Action $action -Trigger $trigger -Settings $settings -User "saif123" -RunLevel Highest -Force
 
-      - name: Step 7 - Install and Configure Tailscale
+      - name: Step 7 - Install Tailscale
         run: |
-          Write-Host "🌐 Installing Tailscale..." -ForegroundColor Cyan
-          
-          $tailscaleUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-          $installerPath = "$env:TEMP\tailscale-setup.exe"
-          
-          # Download
-          Invoke-WebRequest -Uri $tailscaleUrl -OutFile $installerPath -UseBasicParsing
-          
-          # Install silently
-          Start-Process $installerPath -ArgumentList "/quiet", "/norestart" -Wait -NoNewWindow
-          
-          # Wait for service
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\ts.exe"
+          Start-Process "$env:TEMP\ts.exe" -ArgumentList "/quiet", "/norestart" -Wait
           Start-Sleep -Seconds 5
-          
-          # Connect to Tailscale
-          $tailscalePath = "C:\Program Files\Tailscale\tailscale.exe"
-          
-          if (Test-Path $tailscalePath) {
-              & $tailscalePath up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.rdp_node }}" --accept-routes
-              Write-Host "✅ Tailscale Connected!" -ForegroundColor Green
-          } else {
-              Write-Host "❌ Tailscale installation failed!" -ForegroundColor Red
-          }
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-${{ matrix.rdp_node }}"
 
-      - name: Step 8 - Configure Windows Firewall
+      - name: Step 8 - Get Info
         run: |
-          Write-Host "🔥 Configuring Firewall..." -ForegroundColor Cyan
-          
-          # Allow Firefox
-          New-NetFirewallRule -DisplayName "Firefox-Allow" -Direction Inbound -Program "C:\Program Files\Mozilla Firefox\firefox.exe" -Action Allow -ErrorAction SilentlyContinue
-          New-NetFirewallRule -DisplayName "Firefox-Allow-Out" -Direction Outbound -Program "C:\Program Files\Mozilla Firefox\firefox.exe" -Action Allow -ErrorAction SilentlyContinue
-          
-          Write-Host "✅ Firewall Configured!" -ForegroundColor Green
-
-      - name: Step 9 - Create Desktop Shortcuts
-        run: |
-          Write-Host "🖥️ Creating Desktop Shortcuts..." -ForegroundColor Cyan
-          
-          $desktop = "C:\Users\saif123\Desktop"
-          New-Item -ItemType Directory -Force -Path $desktop | Out-Null
-          
-          # Create shortcut for manual launch
-          $shell = New-Object -ComObject WScript.Shell
-          $shortcut = $shell.CreateShortcut("$desktop\Start Token Fetcher.lnk")
-          $shortcut.TargetPath = "powershell.exe"
-          $shortcut.Arguments = "-ExecutionPolicy Bypass -File C:\StartTokenFetcher.ps1"
-          $shortcut.IconLocation = "C:\Program Files\Mozilla Firefox\firefox.exe"
-          $shortcut.Save()
-          
-          Write-Host "✅ Desktop Shortcuts Created!" -ForegroundColor Green
-
-      - name: Step 10 - Get RDP Connection Info
-        run: |
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Write-Host ""
-          Write-Host "Waiting for Tailscale IP..." -ForegroundColor Yellow
-          Start-Sleep -Seconds 10
-          
-          $tailscalePath = "C:\Program Files\Tailscale\tailscale.exe"
-          
-          if (Test-Path $tailscalePath) {
-              $ip = & $tailscalePath ip -4
-              
-              Write-Host ""
-              Write-Host "╔════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-              Write-Host "║                                                    ║" -ForegroundColor Cyan
-              Write-Host "║          🚀 RDP NODE ${{ matrix.rdp_node }} - READY!                   ║" -ForegroundColor Green
-              Write-Host "║                                                    ║" -ForegroundColor Cyan
-              Write-Host "╠════════════════════════════════════════════════════╣" -ForegroundColor Cyan
-              Write-Host "║                                                    ║" -ForegroundColor Cyan
-              Write-Host "║  📡 IP Address:    $ip                ║" -ForegroundColor Yellow
-              Write-Host "║  👤 Username:      saif123                         ║" -ForegroundColor Yellow
-              Write-Host "║  🔐 Password:      admin@123                       ║" -ForegroundColor Yellow
-              Write-Host "║                                                    ║" -ForegroundColor Cyan
-              Write-Host "╠════════════════════════════════════════════════════╣" -ForegroundColor Cyan
-              Write-Host "║                                                    ║" -ForegroundColor Cyan
-              Write-Host "║  ✅ Auto-Start:     ENABLED                        ║" -ForegroundColor Green
-              Write-Host "║  ✅ Token Workers:  2 Instances x 6 Workers (12)   ║" -ForegroundColor Green
-              Write-Host "║  ✅ Auto-Reload:    Every 50 seconds               ║" -ForegroundColor Green
-              Write-Host "║  ✅ Backend:        xsw.work.gd/add-token          ║" -ForegroundColor Green
-              Write-Host "║                                                    ║" -ForegroundColor Cyan
-              Write-Host "╚════════════════════════════════════════════════════╝" -ForegroundColor Cyan
-              Write-Host ""
-              
-              # Also output as GitHub annotation
-              Write-Host "::notice title=RDP Node ${{ matrix.rdp_node }} Ready::IP: $ip | User: saif123 | Pass: admin@123"
-          } else {
-              Write-Host "⚠️ Tailscale not found - using fallback" -ForegroundColor Yellow
-          }
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host "  RDP NODE ${{ matrix.rdp_node }} READY" -ForegroundColor Green
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host "  IP:   $ip" -ForegroundColor Yellow
+          Write-Host "  User: saif123" -ForegroundColor Yellow
+          Write-Host "  Pass: admin@123" -ForegroundColor Yellow
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host ""
 
-      - name: Step 11 - Launch Token Fetcher NOW
+      - name: Step 9 - Launch Now
         run: |
-          Write-Host "🚀 Launching Token Fetcher..." -ForegroundColor Cyan
-          
-          Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File C:\StartTokenFetcher.ps1" -NoNewWindow
-          
+          Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File C:\Start.ps1"
           Start-Sleep -Seconds 5
-          
-          # Verify Firefox is running
-          $firefoxProcesses = Get-Process firefox -ErrorAction SilentlyContinue
-          
-          if ($firefoxProcesses) {
-              Write-Host "✅ Firefox is running with $($firefoxProcesses.Count) process(es)" -ForegroundColor Green
-          } else {
-              Write-Host "⚠️ Firefox not detected - may take a moment to start" -ForegroundColor Yellow
+          $ff = Get-Process firefox -ErrorAction SilentlyContinue
+          if ($ff) {
+              Write-Host "Firefox running!" -ForegroundColor Green
           }
 
-      - name: Step 12 - Keep Alive Forever
+      - name: Step 10 - Keep Alive
         run: |
-          Write-Host ""
-          Write-Host "♾️  System is now running..." -ForegroundColor Cyan
-          Write-Host "   RDP will auto-restart Firefox on reconnect" -ForegroundColor Gray
-          Write-Host "   Press Ctrl+C in Actions to stop (not recommended)" -ForegroundColor Gray
-          Write-Host ""
-          
-          # Keep the job alive
           while ($true) {
               Start-Sleep -Seconds 300
-              
-              # Health check
-              $firefox = Get-Process firefox -ErrorAction SilentlyContinue
-              if ($firefox) {
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] ✅ Firefox running - $($firefox.Count) process(es)" -ForegroundColor Green
+              $ff = Get-Process firefox -ErrorAction SilentlyContinue
+              if ($ff) {
+                  Write-Host "[OK] Firefox running" -ForegroundColor Green
               } else {
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] ⚠️ Firefox not running" -ForegroundColor Yellow
+                  Write-Host "[WARN] Firefox not running" -ForegroundColor Yellow
               }
           }
