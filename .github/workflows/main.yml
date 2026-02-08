@@ -1,4 +1,4 @@
-name: Gartic Auto RDP
+name: Gartic Fully Automated
 on:
   workflow_dispatch:
   schedule:
@@ -13,13 +13,13 @@ jobs:
         rdp_node: [1, 2]
     
     steps:
-      - name: Configure RDP Network
+      - name: Configure RDP
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: Create RDP User
+      - name: Create User
         run: |
           $password = "admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
@@ -27,162 +27,176 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123" -ErrorAction SilentlyContinue
 
-      - name: Setup Firefox Profile
+      - name: Create HTML Auto-Script Page
         run: |
-          $profilePath = "C:\GarticProfile"
-          New-Item -ItemType Directory -Force -Path $profilePath
-          
-          $userJS = @"
-          user_pref("browser.startup.homepage", "about:blank");
-          user_pref("browser.shell.checkDefaultBrowser", false);
-          user_pref("extensions.autoDisableScopes", 0);
-          user_pref("extensions.enabledScopes", 15);
-          "@
-          
-          $userJS | Out-File "$profilePath\user.js" -Encoding ASCII
-
-      - name: Create Tampermonkey Script
-        run: |
-          $scriptDir = "C:\GarticProfile\gm_scripts"
-          New-Item -ItemType Directory -Force -Path $scriptDir
-          
-          $scriptContent = @'
-          // ==UserScript==
-          // @name         Gartic.io Token Fetcher
-          // @namespace    http://tampermonkey.net/
-          // @version      0.5
-          // @description  Fetch tokens from Turnstile
-          // @author       You
-          // @match        *://gartic.io/*
-          // @match        *://*.gartic.io/*
-          // @grant        none
-          // ==/UserScript==
-          (function () {
-              'use strict';
-              const TOKEN_INTERVAL = 3500;
-              const NUM_IFRAMES = 6;
-              const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+          $htmlContent = @'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Gartic Token Fetcher</title>
+              <style>
+                  body { 
+                      background: #1a1a1a; 
+                      color: #00ff00; 
+                      font-family: monospace; 
+                      padding: 20px;
+                      font-size: 16px;
+                  }
+                  .status { 
+                      border: 2px solid #00ff00; 
+                      padding: 15px; 
+                      margin: 10px 0;
+                      border-radius: 5px;
+                  }
+                  #counter { 
+                      font-size: 24px; 
+                      font-weight: bold; 
+                      color: #00ff00;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="status">
+                  <h1>🚀 Gartic Token Fetcher Active</h1>
+                  <p>✅ Script Running: <span id="status">Active</span></p>
+                  <p>📊 Tokens Sent: <span id="counter">0</span></p>
+                  <p>🔄 Auto-reload in: <span id="timer">50</span>s</p>
+                  <p>🌐 Backend: https://www.xsw.work.gd/add-token</p>
+              </div>
               
-              setInterval(() => { location.reload(); }, 50000);
+              <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
               
-              function sendToken(token) {
-                  if (typeof token !== 'string' || token.length <= 20) return;
-                  console.log("Token received:", token);
-                  fetch(BACKEND_URL, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ token })
-                  }).catch(() => {});
-              }
-              
-              function createTurnstileFrames() {
-                  window.addEventListener('message', function(event) {
-                      if (event.data && typeof event.data === 'string') {
-                          sendToken(event.data);
-                      }
-                  });
+              <script>
+              (function() {
+                  const TOKEN_INTERVAL = 3500;
+                  const NUM_IFRAMES = 6;
+                  const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+                  let tokenCount = 0;
+                  let reloadTimer = 50;
                   
-                  for (let i = 0; i < NUM_IFRAMES; i++) {
-                      const iframe = document.createElement('iframe');
-                      iframe.style.display = 'none';
-                      iframe.sandbox = 'allow-scripts allow-same-origin';
-                      document.body.appendChild(iframe);
+                  // Update UI
+                  setInterval(() => {
+                      reloadTimer--;
+                      document.getElementById('timer').textContent = reloadTimer;
+                      if (reloadTimer <= 0) location.reload();
+                  }, 1000);
+                  
+                  function sendToken(token) {
+                      if (typeof token !== 'string' || token.length <= 20) return;
+                      tokenCount++;
+                      document.getElementById('counter').textContent = tokenCount;
+                      console.log("Token #" + tokenCount + ":", token);
                       
-                      const html = `
-                          <!DOCTYPE html>
-                          <html>
-                          <head>
-                              <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-                          </head>
-                          <body>
-                              <div id="cf-turnstile"></div>
-                              <script>
-                                  function requestToken() {
-                                      try {
-                                          window.turnstile.render('#cf-turnstile', {
-                                              sitekey: '0x4AAAAAABBPKaIbNwnPEfSo',
-                                              callback: function(token) {
-                                                  parent.postMessage(token, '*');
-                                              }
-                                          });
-                                      } catch (e) {}
-                                  }
-                                  setInterval(requestToken, ${TOKEN_INTERVAL});
-                                  setTimeout(requestToken, 200);
-                              </script>
-                          </body>
-                          </html>
-                      `;
-                      iframe.srcdoc = html;
+                      fetch(BACKEND_URL, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ token })
+                      }).catch(() => {});
                   }
-              }
-              
-              createTurnstileFrames();
-          })();
+                  
+                  function createTurnstileFrames() {
+                      window.addEventListener('message', function(event) {
+                          if (event.data && typeof event.data === 'string') {
+                              sendToken(event.data);
+                          }
+                      });
+                      
+                      for (let i = 0; i < NUM_IFRAMES; i++) {
+                          const iframe = document.createElement('iframe');
+                          iframe.style.display = 'none';
+                          iframe.sandbox = 'allow-scripts allow-same-origin';
+                          document.body.appendChild(iframe);
+                          
+                          const html = `
+                              <!DOCTYPE html>
+                              <html>
+                              <head>
+                                  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                              </head>
+                              <body>
+                                  <div id="cf-turnstile-${i}"></div>
+                                  <script>
+                                      function requestToken() {
+                                          try {
+                                              window.turnstile.render('#cf-turnstile-${i}', {
+                                                  sitekey: '0x4AAAAAABBPKaIbNwnPEfSo',
+                                                  callback: function(token) {
+                                                      parent.postMessage(token, '*');
+                                                  }
+                                              });
+                                          } catch (e) {
+                                              console.error('Turnstile error:', e);
+                                          }
+                                      }
+                                      setInterval(requestToken, ${TOKEN_INTERVAL});
+                                      setTimeout(requestToken, ${200 + i * 100});
+                                  </script>
+                              </body>
+                              </html>
+                          `;
+                          iframe.srcdoc = html;
+                      }
+                  }
+                  
+                  // Start everything
+                  setTimeout(createTurnstileFrames, 1000);
+                  console.log('✅ Gartic Token Fetcher Initialized');
+              })();
+              </script>
+          </body>
+          </html>
           '@
           
-          $scriptContent | Out-File "$scriptDir\gartic.user.js" -Encoding UTF8
+          New-Item -ItemType Directory -Force -Path "C:\GarticApp"
+          $htmlContent | Out-File "C:\GarticApp\gartic1.html" -Encoding UTF8
+          $htmlContent | Out-File "C:\GarticApp\gartic2.html" -Encoding UTF8
 
-      - name: Install Firefox Extensions
+      - name: Create Startup Script
         run: |
-          $firefoxDir = "C:\Program Files\Mozilla Firefox"
-          $distDir = "$firefoxDir\distribution"
-          
-          if (!(Test-Path $distDir)) {
-              New-Item -ItemType Directory -Force -Path $distDir
-          }
-          
-          $policies = @{
-              policies = @{
-                  Extensions = @{
-                      Install = @(
-                          "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
-                      )
-                  }
-                  DisableAppUpdate = $true
-                  DontCheckDefaultBrowser = $true
-              }
-          }
-          
-          $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
-
-      - name: Create Auto-Start Script
-        run: |
-          $startScript = @'
-          Start-Sleep -Seconds 5
-          $firefox = "C:\Program Files\Mozilla Firefox\firefox.exe"
-          $profile = "C:\GarticProfile"
-          
-          Start-Process $firefox -ArgumentList "-profile `"$profile`" -new-window https://gartic.io"
+          $script = @'
           Start-Sleep -Seconds 3
-          Start-Process $firefox -ArgumentList "-profile `"$profile`" -new-tab https://gartic.io"
+          $firefox = "C:\Program Files\Mozilla Firefox\firefox.exe"
+          
+          # Open two tabs with the HTML file
+          Start-Process $firefox -ArgumentList "file:///C:/GarticApp/gartic1.html"
+          Start-Sleep -Seconds 2
+          Start-Process $firefox -ArgumentList "file:///C:/GarticApp/gartic2.html"
           '@
           
-          $startScript | Out-File "C:\StartGartic.ps1" -Encoding UTF8
+          $script | Out-File "C:\StartGartic.ps1" -Encoding UTF8
           
-          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File C:\StartGartic.ps1"
+          # Create scheduled task
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\StartGartic.ps1"
           $trigger = New-ScheduledTaskTrigger -AtLogOn -User "saif123"
           $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0
-          
-          Register-ScheduledTask -TaskName "GarticAutoStart" -Action $action -Trigger $trigger -Settings $settings -User "saif123" -RunLevel Highest -Force
+          Register-ScheduledTask -TaskName "GarticStart" -Action $action -Trigger $trigger -Settings $settings -User "saif123" -RunLevel Highest -Force
 
       - name: Start Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-          Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
-          Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\ts.exe"
+          Start-Process "$env:TEMP\ts.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-${{ matrix.rdp_node }}"
 
-      - name: Launch Firefox and Keep Alive
+      - name: Launch and Display Info
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "========================================" -ForegroundColor Cyan
-          Write-Host "RDP Node ${{ matrix.rdp_node }} Ready!" -ForegroundColor Green
-          Write-Host "IP: $ip" -ForegroundColor Yellow
-          Write-Host "User: saif123" -ForegroundColor Yellow
-          Write-Host "Pass: admin@123" -ForegroundColor Yellow
-          Write-Host "========================================" -ForegroundColor Cyan
           
+          Write-Host ""
+          Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Cyan
+          Write-Host "║   RDP Node ${{ matrix.rdp_node }} - Ready!              ║" -ForegroundColor Green
+          Write-Host "╠════════════════════════════════════════╣" -ForegroundColor Cyan
+          Write-Host "║  IP:   $ip            ║" -ForegroundColor Yellow
+          Write-Host "║  User: saif123                         ║" -ForegroundColor Yellow
+          Write-Host "║  Pass: admin@123                       ║" -ForegroundColor Yellow
+          Write-Host "╠════════════════════════════════════════╣" -ForegroundColor Cyan
+          Write-Host "║  ✅ Firefox: Auto-starts on login      ║" -ForegroundColor Green
+          Write-Host "║  ✅ Script: Embedded (no extensions)   ║" -ForegroundColor Green
+          Write-Host "║  ✅ Auto-reload: Every 50 seconds      ║" -ForegroundColor Green
+          Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Cyan
+          Write-Host ""
+          
+          # Start now
           Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File C:\StartGartic.ps1"
           
+          # Keep alive
           while ($true) { Start-Sleep -Seconds 300 }
