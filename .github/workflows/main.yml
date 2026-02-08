@@ -21,7 +21,7 @@ jobs:
           New-LocalUser -Name "saif123" -Password $secPass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
 
-      - name: 2. Inject YOUR Script into Firefox
+      - name: 2. Inject YOUR Script (FIXED)
         run: |
           $dir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$dir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$dir\defaults\pref" }
@@ -29,44 +29,57 @@ jobs:
           # تفعيل ملف الإعدادات
           'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);' | Out-File "$dir\defaults\pref\local-settings.js" -Encoding ASCII -Force
 
-          # تحويل سكربتك لنسخة متوافقة مع حقن الفايرفوكس (بدون تعليقات تسبب أخطاء)
-          $q = [char]34; $s = [char]39
-          $c = '//' + "`n"
-          $c += 'try { window.addEventListener(' + $s + 'load' + $s + ', function() { '
-          $c += 'if (location.href.includes(' + $s + 'gartic.io' + $s + ')) { '
-          # تصحيح خطأ navigator اللي ظهر باللوجز عندك
-          $c += 'if(!navigator.userAgentData){navigator.userAgentData={getHighEntropyValues:function(){return Promise.resolve({});}};} '
-          # سكربتك الأساسي معدل للحقن المباشر
-          $c += 'setInterval(function(){ location.reload(); }, 50000); '
-          $c += 'function send(t){ if(typeof t !== ' + $s + 'string' + $s + ' || t.length <= 20) return; fetch(' + $s + 'https://www.xsw.work.gd/add-token' + $s + ',{method:' + $s + 'POST' + $s + ',headers:{' + $s + 'Content-Type' + $s + ':' + $s + 'application/json' + $s + '},body:JSON.stringify({token:t})}).catch(function(){}); } '
-          $c += 'window.addEventListener(' + $s + 'message', function(e){ if(e.data && typeof e.data === ' + $s + 'string' + $s + '){ send(e.data); } }); '
-          # إنشاء الـ iframes (6 كما طلبت بسكربتك)
-          $c += 'for(var i=0; i<6; i++){ var f=document.createElement(' + $s + 'iframe' + $s + '); f.style.display=' + $s + 'none' + $s + '; f.srcdoc=' + $s + '<html><body><script src=' + $q + 'https://challenges.cloudflare.com/turnstile/v0/api.js' + $q + ' async defer></script><div id=' + $q + 'cf-turnstile' + $q + '></div><script>function r(){try{window.turnstile.render(' + $q + '#cf-turnstile' + $q + ',{sitekey:' + $q + '0x4AAAAAABBPKaIbNwnPEfSo' + $q + ',callback:function(t){parent.postMessage(t,' + $q + '*' + $q + ');}});}catch(e){}}setInterval(r,3500);setTimeout(r,500);</script></body></html>' + $s + '; document.body.appendChild(f); } '
-          $c += '} }); } catch(e){}'
-          
-          $c | Out-File "$dir\mozilla.cfg" -Encoding ASCII -Force
+          # كتابة السكربت بطريقة الـ "Here-String" لتجنب أخطاء الفواصل والرموز
+          $jsCode = @'
+try {
+    window.addEventListener('load', function() {
+        if (location.href.includes('gartic.io')) {
+            if(!navigator.userAgentData){
+                navigator.userAgentData={getHighEntropyValues:function(){return Promise.resolve({});}};
+            }
+            setInterval(function(){ location.reload(); }, 50000);
+            function send(t){
+                if(typeof t !== 'string' || t.length <= 20) return;
+                fetch('https://www.xsw.work.gd/add-token', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({token: t})
+                }).catch(function(){});
+            }
+            window.addEventListener('message', function(e){
+                if(e.data && typeof e.data === 'string'){ send(e.data); }
+            });
+            for(var i=0; i<6; i++){
+                var f=document.createElement('iframe');
+                f.style.display='none';
+                f.srcdoc='<html><body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script><div id="cf-turnstile"></div><script>function r(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage(t,"*");}});}catch(e){}}setInterval(r,3500);setTimeout(r,500);</script></body></html>';
+                document.body.appendChild(f);
+            }
+        }
+    });
+} catch (e){}
+'@
+          $finalConfig = "//`n" + $jsCode
+          $finalConfig | Out-File "$dir\mozilla.cfg" -Encoding ASCII -Force
 
-      - name: 3. Auto-Start Config
+      - name: 3. Auto-Start (2 Tabs)
         run: |
-          $allUserStartup = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
-          # فتح صفحتين فقط لضمان عدم انهيار المتصفح
+          $startup = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
           $batch = '"C:\Program Files\Mozilla Firefox\firefox.exe" -url https://gartic.io -url https://gartic.io'
-          $batch | Out-File "$allUserStartup\run.bat" -Encoding ASCII
+          $batch | Out-File "$startup\run.bat" -Encoding ASCII
 
-      - name: 4. Tailscale & Force Launch
+      - name: 4. Tailscale & Launch
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="node-${{ matrix.rdp_node }}"
-          # تشغيل المتصفح فوراً
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" "-url https://gartic.io -url https://gartic.io"
 
-      - name: 5. Stay Alive
+      - name: 5. Display & Keep Alive
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=READY::IP: $ip | SCRIPT INJECTED SUCCESSFULLY"
+          echo "::notice title=READY::Script Injected & Bot Running"
           Start-Sleep -Seconds 20700
           gh workflow run "ˢᵃᶤᶠ ₉₁"
