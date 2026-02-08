@@ -50,9 +50,11 @@ jobs:
 
       - name: Install Tailscale
         run: |
-          curl -o $env:TEMP\ts.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
-          Start-Process $env:TEMP\ts.exe -ArgumentList "/quiet" -Wait
-          timeout 5
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+          $output = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
+          Start-Process msiexec.exe -ArgumentList "/i `"$output`" /quiet /qn" -Wait
+          Start-Sleep -Seconds 10
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=g${{ matrix.node }}
 
       - name: Info
