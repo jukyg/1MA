@@ -1,4 +1,4 @@
-name: Gartic Token Machine
+name: Gartic RDP
 on:
   workflow_dispatch:
   schedule:
@@ -10,107 +10,63 @@ jobs:
     timeout-minutes: 360
     strategy:
       matrix:
-        rdp_node: [1, 2]
+        node: [1, 2]
     
     steps:
-      - name: Configure RDP
+      - name: Setup RDP
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
           netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
 
       - name: Create User
         run: |
-          $pass = ConvertTo-SecureString "admin@123" -AsPlainText -Force
-          New-LocalUser -Name "saif123" -Password $pass -FullName "Admin" -Description "RDP User" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123" -ErrorAction SilentlyContinue
+          net user saif123 admin@123 /add
+          net localgroup administrators saif123 /add
+          net localgroup "Remote Desktop Users" saif123 /add
 
-      - name: Create Token Pages
+      - name: Create Pages
         run: |
-          New-Item -Path "C:\Tokens" -ItemType Directory -Force
-          
-          $page = @'
-          <!DOCTYPE html>
-          <html>
-          <head>
-          <meta charset="UTF-8">
-          <title>Token Fetcher</title>
-          <style>
-          body{background:#1a1a2e;color:#0f0;font-family:monospace;padding:20px}
-          .box{background:#16213e;padding:15px;margin:10px 0;border-radius:5px;border:1px solid #0f0}
-          .num{font-size:40px;font-weight:bold;color:#0f0}
-          </style>
-          </head>
-          <body>
-          <div class="box">
-          <h1>Token Fetcher Active</h1>
-          <p>Tokens: <span class="num" id="c">0</span></p>
-          <p>Reload: <span class="num" id="t">50</span>s</p>
-          </div>
-          <div class="box" id="log"></div>
-          <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-          <script>
-          var cnt=0,tmr=50;
-          function lg(m){document.getElementById('log').innerHTML='['+new Date().toLocaleTimeString()+'] '+m+'<br>'+document.getElementById('log').innerHTML}
-          function snd(t,i){if(!t||t.length<20)return;fetch('https://www.xsw.work.gd/add-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(function(r){if(r.ok){cnt++;document.getElementById('c').innerText=cnt;lg('Worker '+i+': OK #'+cnt)}}).catch(function(){})}
-          window.addEventListener('message',function(e){if(e.data&&e.data.t)snd(e.data.t,e.data.i)});
-          for(var i=0;i<6;i++){
-          var f=document.createElement('iframe');
-          f.style.display='none';
-          f.sandbox='allow-scripts allow-same-origin';
-          document.body.appendChild(f);
-          f.srcdoc='<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="x"></div><script>var w='+i+';function go(){if(!window.turnstile){setTimeout(go,100);return}try{window.turnstile.render("#x",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage({t:t,i:w},"*")}})}catch(e){}}setInterval(function(){if(window.turnstile)try{window.turnstile.reset("#x")}catch(e){}},3500);setTimeout(go,'+(100+i*50)+');</script></body></html>';
-          }
-          setInterval(function(){tmr--;document.getElementById('t').innerText=tmr;if(tmr<=0)location.reload()},1000);
-          lg('Started 6 workers');
-          </script>
-          </body>
-          </html>
-          '@
-          
-          $page | Out-File "C:\Tokens\p1.html" -Encoding UTF8
-          $page | Out-File "C:\Tokens\p2.html" -Encoding UTF8
+          New-Item -Path "C:\T" -ItemType Directory -Force
+          @'
+          <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Token</title><style>body{background:#000;color:#0f0;font-family:monospace;padding:20px}.b{background:#111;padding:15px;margin:10px 0;border:1px solid #0f0}.n{font-size:35px;font-weight:bold}</style></head><body><div class="b"><h1>Token Fetcher</h1><p>Sent: <span class="n" id="c">0</span></p><p>Timer: <span class="n" id="t">50</span>s</p></div><div class="b" id="l"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script><script>var n=0,r=50;function g(m){document.getElementById('l').innerHTML='['+new Date().toLocaleTimeString()+'] '+m+'<br>'+document.getElementById('l').innerHTML}function s(t,i){if(!t||t.length<20)return;fetch('https://www.xsw.work.gd/add-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(function(x){if(x.ok){n++;document.getElementById('c').innerText=n;g('W'+i+': #'+n)}}).catch(function(){})}window.addEventListener('message',function(e){if(e.data&&e.data.t)s(e.data.t,e.data.i)});for(var i=0;i<6;i++){var f=document.createElement('iframe');f.style.display='none';f.sandbox='allow-scripts allow-same-origin';document.body.appendChild(f);f.srcdoc='<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="x"></div><script>var w='+i+';function go(){if(!window.turnstile){setTimeout(go,100);return}try{window.turnstile.render("#x",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage({t:t,i:w},"*")}})}catch(e){}}setInterval(function(){if(window.turnstile)try{window.turnstile.reset("#x")}catch(e){}},3500);setTimeout(go,'+(100+i*50)+');</script></body></html>'}setInterval(function(){r--;document.getElementById('t').innerText=r;if(r<=0)location.reload()},1000);g('Start')</script></body></html>
+          '@ | Out-File "C:\T\1.html" -Encoding UTF8
+          @'
+          <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Token</title><style>body{background:#000;color:#0f0;font-family:monospace;padding:20px}.b{background:#111;padding:15px;margin:10px 0;border:1px solid #0f0}.n{font-size:35px;font-weight:bold}</style></head><body><div class="b"><h1>Token Fetcher</h1><p>Sent: <span class="n" id="c">0</span></p><p>Timer: <span class="n" id="t">50</span>s</p></div><div class="b" id="l"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script><script>var n=0,r=50;function g(m){document.getElementById('l').innerHTML='['+new Date().toLocaleTimeString()+'] '+m+'<br>'+document.getElementById('l').innerHTML}function s(t,i){if(!t||t.length<20)return;fetch('https://www.xsw.work.gd/add-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(function(x){if(x.ok){n++;document.getElementById('c').innerText=n;g('W'+i+': #'+n)}}).catch(function(){})}window.addEventListener('message',function(e){if(e.data&&e.data.t)s(e.data.t,e.data.i)});for(var i=0;i<6;i++){var f=document.createElement('iframe');f.style.display='none';f.sandbox='allow-scripts allow-same-origin';document.body.appendChild(f);f.srcdoc='<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="x"></div><script>var w='+i+';function go(){if(!window.turnstile){setTimeout(go,100);return}try{window.turnstile.render("#x",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage({t:t,i:w},"*")}})}catch(e){}}setInterval(function(){if(window.turnstile)try{window.turnstile.reset("#x")}catch(e){}},3500);setTimeout(go,'+(100+i*50)+');</script></body></html>'}setInterval(function(){r--;document.getElementById('t').innerText=r;if(r<=0)location.reload()},1000);g('Start')</script></body></html>
+          '@ | Out-File "C:\T\2.html" -Encoding UTF8
 
-      - name: Create Startup
+      - name: Create Script
         run: |
-          $s = @"
-          Start-Sleep 5
-          Start-Process 'C:\Program Files\Mozilla Firefox\firefox.exe' 'file:///C:/Tokens/p1.html'
-          Start-Sleep 2
-          Start-Process 'C:\Program Files\Mozilla Firefox\firefox.exe' 'file:///C:/Tokens/p2.html'
-          "@
-          $s | Out-File "C:\go.ps1" -Encoding UTF8
-          
-          $a = New-ScheduledTaskAction -Execute "powershell" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\go.ps1"
-          $t = New-ScheduledTaskTrigger -AtLogOn -User "saif123"
-          $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-          Register-ScheduledTask -TaskName "Tokens" -Action $a -Trigger $t -Settings $set -User "saif123" -RunLevel Highest -Force
+          @"
+          timeout 5
+          start firefox file:///C:/T/1.html
+          timeout 2
+          start firefox file:///C:/T/2.html
+          "@ | Out-File "C:\run.bat" -Encoding ASCII
+
+      - name: Auto Start
+        run: |
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v TokenFetcher /t REG_SZ /d "C:\run.bat" /f
 
       - name: Install Tailscale
         run: |
-          Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\ts.exe"
-          Start-Process "$env:TEMP\ts.exe" -ArgumentList "/quiet","/norestart" -Wait
-          Start-Sleep 5
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-${{ matrix.rdp_node }}"
+          curl -o $env:TEMP\ts.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
+          Start-Process $env:TEMP\ts.exe -ArgumentList "/quiet" -Wait
+          timeout 5
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=g${{ matrix.node }}
 
-      - name: Show Info
+      - name: Info
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host ""
-          Write-Host "====================================" -ForegroundColor Cyan
-          Write-Host "  NODE ${{ matrix.rdp_node }} READY" -ForegroundColor Green
-          Write-Host "====================================" -ForegroundColor Cyan
-          Write-Host "  IP:   $ip" -ForegroundColor Yellow
+          Write-Host "`n================================" -ForegroundColor Cyan
+          Write-Host "  NODE ${{ matrix.node }}" -ForegroundColor Green
+          Write-Host "  IP: $ip" -ForegroundColor Yellow
           Write-Host "  User: saif123" -ForegroundColor Yellow
           Write-Host "  Pass: admin@123" -ForegroundColor Yellow
-          Write-Host "====================================" -ForegroundColor Cyan
+          Write-Host "================================`n" -ForegroundColor Cyan
 
-      - name: Launch
-        run: |
-          powershell -ExecutionPolicy Bypass -File C:\go.ps1
+      - name: Start
+        run: C:\run.bat
 
-      - name: Keep Alive
-        run: |
-          while($true){Start-Sleep 300}
+      - name: Keep
+        run: while($true){sleep 300}
