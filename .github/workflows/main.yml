@@ -1,9 +1,8 @@
-name: ˢᵃᶤᶠ ₉₁
-
+name: ˢᵃᶤᶠ ₉₁ - Auto Firefox + Script
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
+  schedule:
+    - cron: '0 */6 * * *'
 
 jobs:
   gartic-bot:
@@ -12,68 +11,192 @@ jobs:
     strategy:
       matrix:
         rdp_node: [1, 2]
-
+    
     steps:
-      - name: 1. Setup
+      - name: 1. Checkout Script
+        uses: actions/checkout@v3
+      
+      - name: 2. Configure RDP
         run: |
-          $pass = "admin@123"
-          $secPass = ConvertTo-SecureString $pass -AsPlainText -Force
-          New-LocalUser -Name "saif123" -Password $secPass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "saif123"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Inject Script
+      - name: 3. Create RDP User
         run: |
-          $dir = "C:\Program Files\Mozilla Firefox"
-          if (!(Test-Path "$dir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$dir\defaults\pref" }
-          'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);' | Out-File "$dir\defaults\pref\local-settings.js" -Encoding ASCII -Force
+          $password = "admin@123"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "saif123" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123" -ErrorAction SilentlyContinue
+
+      - name: 4. Setup Firefox Profile + Tampermonkey Script
+        run: |
+          # إنشاء ملف تعريف Firefox ثابت
+          $profilePath = "C:\GarticProfile"
+          New-Item -ItemType Directory -Force -Path $profilePath
           
-          $js = @"
-          try {
-              window.addEventListener('load', function() {
-                  if (location.href.includes('gartic.io')) {
-                      if(!navigator.userAgentData){
-                          navigator.userAgentData={getHighEntropyValues:function(){return Promise.resolve({});}};
-                      }
-                      setInterval(function(){ location.reload(); }, 50000);
-                      function send(t){
-                          if(typeof t !== 'string' || t.length <= 20) return;
-                          fetch('https://www.xsw.work.gd/add-token', {
-                              method: 'POST',
-                              headers: {'Content-Type': 'application/json'},
-                              body: JSON.stringify({token: t})
-                          }).catch(function(){});
-                      }
-                      window.addEventListener('message', function(e){
-                          if(e.data && typeof e.data === 'string'){ send(e.data); }
-                      });
-                      for(var i=0; i<6; i++){
-                          var f=document.createElement('iframe');
-                          f.style.display='none';
-                          f.srcdoc='<html><body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script><div id="cf-turnstile"></div><script>function r(){try{window.turnstile.render("#cf-turnstile",{sitekey:"0x4AAAAAABBPKaIbNwnPEfSo",callback:function(t){parent.postMessage(t,"*");}});}catch(e){}}setInterval(r,3000);setTimeout(r,500);</script></body></html>';
-                          document.body.appendChild(f);
-                      }
-                  }
-              });
-          } catch (e){}
-          "@
-          ("//" + "`n" + $js) | Out-File "$dir\mozilla.cfg" -Encoding ASCII -Force
+          # إعداد user.js
+          @"
+          user_pref("browser.startup.homepage", "about:blank");
+          user_pref("browser.shell.checkDefaultBrowser", false);
+          user_pref("extensions.autoDisableScopes", 0);
+          user_pref("extensions.enabledScopes", 15);
+          "@ | Out-File "$profilePath\user.js" -Encoding ASCII
+          
+          # تحضير مجلد Tampermonkey Script
+          $tampermonkeyDir = "$profilePath\gm_scripts"
+          New-Item -ItemType Directory -Force -Path $tampermonkeyDir
+          
+          # إنشاء السكربت
+          @'
+// ==UserScript==
+// @name         Gartic.io Token Fetcher (Optimized Reload Version)
+// @namespace    http://tampermonkey.net/
+// @version      0.5
+// @description  Fetch maximum tokens from Turnstile with minimal data usage + auto reload every 50s
+// @author       You
+// @match        *://gartic.io/*
+// @match        *://*.gartic.io/*
+// @grant        none
+// ==/UserScript==
+(function () {
+    'use strict';
+    const TOKEN_INTERVAL = 3500;
+    const NUM_IFRAMES = 6;
+    const BACKEND_URL = 'https://www.xsw.work.gd/add-token';
+    
+    setInterval(() => { location.reload(); }, 50000);
+    
+    function sendToken(token) {
+        if (typeof token !== 'string' || token.length <= 20) return;
+        console.log("Token received:", token);
+        fetch(BACKEND_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        }).catch(() => {});
+    }
+    
+    function createTurnstileFrames() {
+        window.addEventListener('message', function(event) {
+            if (event.data && typeof event.data === 'string') {
+                sendToken(event.data);
+            }
+        });
+        
+        for (let i = 0; i < NUM_IFRAMES; i++) {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            document.body.appendChild(iframe);
+            
+            const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                </head>
+                <body>
+                    <div id="cf-turnstile"></div>
+                    <script>
+                        function requestToken() {
+                            try {
+                                window.turnstile.render('#cf-turnstile', {
+                                    sitekey: '0x4AAAAAABBPKaIbNwnPEfSo',
+                                    callback: function(token) {
+                                        parent.postMessage(token, '*');
+                                    }
+                                });
+                            } catch (e) {}
+                        }
+                        setInterval(requestToken, ${TOKEN_INTERVAL});
+                        setTimeout(requestToken, 200);
+                    </script>
+                </body>
+                </html>
+            `;
+            iframe.srcdoc = html;
+        }
+    }
+    
+    createTurnstileFrames();
+})();
+'@ | Out-File "$tampermonkeyDir\gartic-token.user.js" -Encoding UTF8
 
-      - name: 3. Startup
+      - name: 5. Install Firefox Extensions
         run: |
-          $path = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
-          if (!(Test-Path $path)) { New-Item -ItemType Directory -Force -Path $path }
-          $cmd = '"C:\Program Files\Mozilla Firefox\firefox.exe" -url https://gartic.io -url https://gartic.io'
-          $cmd | Out-File "$path\run.bat" -Encoding ASCII
+          $firefoxDir = "C:\Program Files\Mozilla Firefox"
+          $distDir = "$firefoxDir\distribution"
+          if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
+          
+          $policies = @{
+              policies = @{
+                  Extensions = @{
+                      Install = @(
+                          "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
+                      )
+                  }
+                  DisableAppUpdate = $true
+                  DontCheckDefaultBrowser = $true
+              }
+          }
+          $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
 
-      - name: 4. Tailscale
+      - name: 6. Create Auto-Start Script (2 Tabs)
+        run: |
+          # سكربت PowerShell لفتح صفحتين
+          $startScript = @'
+Start-Sleep -Seconds 5
+$firefox = "C:\Program Files\Mozilla Firefox\firefox.exe"
+$profile = "C:\GarticProfile"
+
+# فتح أول صفحة
+Start-Process $firefox -ArgumentList "-profile `"$profile`" -new-window https://gartic.io"
+Start-Sleep -Seconds 3
+
+# فتح ثاني صفحة في تاب جديد
+Start-Process $firefox -ArgumentList "-profile `"$profile`" -new-tab https://gartic.io"
+'@
+          $startScript | Out-File "C:\StartGartic.ps1" -Encoding UTF8
+          
+          # إنشاء Scheduled Task
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File C:\StartGartic.ps1"
+          $trigger = New-ScheduledTaskTrigger -AtLogOn -User "saif123"
+          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0
+          Register-ScheduledTask -TaskName "GarticAutoStart" -Action $action -Trigger $trigger -Settings $settings -User "saif123" -RunLevel Highest -Force
+
+      - name: 7. Import Tampermonkey Script
+        run: |
+          # إنشاء ملف تكوين Tampermonkey
+          $configPath = "C:\GarticProfile\tampermonkey-config.json"
+          $config = @{
+              scripts = @(
+                  @{
+                      name = "Gartic.io Token Fetcher"
+                      code = (Get-Content "C:\GarticProfile\gm_scripts\gartic-token.user.js" -Raw)
+                      enabled = $true
+                  }
+              )
+          }
+          $config | ConvertTo-Json -Depth 5 | Out-File $configPath -Encoding UTF8
+
+      - name: 8. Start Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="node-${{ matrix.rdp_node }}"
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" "-url https://gartic.io -url https://gartic.io"
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-${{ matrix.rdp_node }}"
 
-      - name: 5. Stay Alive
+      - name: 9. Launch Firefox Now + Info
         run: |
-          Write-Host "Bot is active..."
-          Start-Sleep -Seconds 20000
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          echo "::notice title=🚀 RDP Node ${{ matrix.rdp_node }} Ready::IP: $ip | User: saif123 | Pass: admin@123 | Firefox will auto-start with 2 tabs on reconnect!"
+          
+          # تشغيل الآن
+          Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File C:\StartGartic.ps1"
+          
+          Write-Host "✅ Firefox launched with 2 Gartic.io tabs + Script injected!"
+          Write-Host "🔄 On RDP reconnect, Firefox will auto-start again!"
+          
+          while ($true) { Start-Sleep -Seconds 300 }
