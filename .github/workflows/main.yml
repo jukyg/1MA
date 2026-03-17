@@ -6,8 +6,8 @@ on:
 
 jobs:
   gartic-bot:
-    runs-on: windows-2022   # Windows 11/Server 2022 هو الأقرب للبيئة الحديثة
-    timeout-minutes: 480
+    runs-on: windows-2022   # Windows 11/Server 2022
+    timeout-minutes: 480     # 8 ساعات
     strategy:
       matrix:
         rdp_node: [1, 2] # تشغيل نسختين بنفس الوقت
@@ -57,7 +57,7 @@ jobs:
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.rdp_node }}"
+          Start-Process "C:\Program Files\Tailscale\tailscale.exe" -ArgumentList "up", "--authkey=${{ secrets.TAILSCALE_AUTH_KEY }}", "--hostname=gartic-node-${{ matrix.rdp_node }}" -Wait
 
       - name: 5. Launch Firefox & Display Info
         run: |
