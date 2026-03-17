@@ -73,4 +73,4 @@ jobs:
           echo "::notice title=RDP CONNECT INFO (Node ${{ matrix.rdp_node }})::IP: $ip | User: saif123 | Pass: admin@123"
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
           Write-Host "RDP Node ${{ matrix.rdp_node }} is Ready!"
-          while ($true) { Start-Sleep -Seconds 300 }
+          while ($true) { Start-Sleep -Seconds 1 }
