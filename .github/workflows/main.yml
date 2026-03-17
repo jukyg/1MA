@@ -3,24 +3,22 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
-
 jobs:
   gartic-bot:
-    runs-on: windows-2022   # Windows 11/Server 2022
-    timeout-minutes: 480     # 8 ساعات
+    runs-on: windows-2022
+    timeout-minutes: 360
     strategy:
+      # هذا الجزء هو "السر" لتشغيل نسختين في نفس الوقت
       matrix:
-        rdp_node: [1, 2] # تشغيل نسختين بنفس الوقت
+        rdp_node: [1, 2] 
     
     steps:
       - name: 1. Configure RDP Network
         run: |
-          # تمكين RDP وتعديل الجدار الناري
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
-
-      - name: 2. Configure Firefox Extensions (No Install Needed)
+      - name: 2. Configure Extensions (No Install Needed)
         run: |
           $firefoxDir = "C:\Program Files\Mozilla Firefox"
           $distDir = "$firefoxDir\distribution"
@@ -43,7 +41,6 @@ jobs:
               }
           }
           $policies | ConvertTo-Json -Depth 4 | Out-File "$distDir\policies.json" -Encoding UTF8
-
       - name: 3. Create RDP User
         run: |
           $password = "admin@123"
@@ -51,18 +48,17 @@ jobs:
           New-LocalUser -Name "saif123" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "saif123"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif123"
-
-      - name: 4. Install & Start Tailscale
+      - name: 4. Start Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
           Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\tailscale.exe"
           Start-Process "$env:TEMP\tailscale.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          Start-Process "C:\Program Files\Tailscale\tailscale.exe" -ArgumentList "up", "--authkey=${{ secrets.TAILSCALE_AUTH_KEY }}", "--hostname=gartic-node-${{ matrix.rdp_node }}" -Wait
-
-      - name: 5. Launch Firefox & Display Info
+          # هنا استخدمنا رقم الـ node في الاسم عشان تفرق بينهم في تطبيق Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gartic-node-${{ matrix.rdp_node }}"
+      - name: 5. Launch Firefox & Info
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "::notice title=RDP CONNECT INFO (Node ${{ matrix.rdp_node }})::IP: $ip | User: saif123 | Pass: admin@123"
           Start-Process "C:\Program Files\Mozilla Firefox\firefox.exe"
           Write-Host "RDP Node ${{ matrix.rdp_node }} is Ready!"
-          while ($true) { Start-Sleep -Seconds 300 }
+          while ($true) { Start-Sleep -Seconds 300 } 
