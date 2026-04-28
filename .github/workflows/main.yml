@@ -43,14 +43,21 @@ jobs:
 
       - name: 4. Create RDP User
         run: |
-          $password = "Saif@123456"
+          # Disable password complexity requirement
+          secedit /export /cfg C:\secpol.cfg
+          (Get-Content C:\secpol.cfg).replace("PasswordComplexity = 1", "PasswordComplexity = 0") | Out-File C:\secpol.cfg
+          secedit /configure /db C:\windows\security\local.sdb /cfg C:\secpol.cfg /areas SECURITYPOLICY
+          Remove-Item -Force C:\secpol.cfg -Confirm:$false
+          
+          # Create user with simple password
+          $password = "saif123456"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
           New-LocalUser -Name "saif" -Password $securePass -AccountNeverExpires -PasswordNeverExpires -ErrorAction Stop
           Add-LocalGroupMember -Group "Administrators" -Member "saif"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "saif"
           
-          Write-Host "User 'saif' created successfully!"
+          Write-Host "User 'saif' created successfully with password: $password"
 
       - name: 5. Start Tailscale
         run: |
@@ -62,7 +69,7 @@ jobs:
       - name: 6. Launch Firefox with Userscript + Tabs
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          echo "::notice title=RDP CONNECT INFO::IP: $ip | User: saif | Pass: Saif@123456"
+          echo "::notice title=RDP CONNECT INFO::IP: $ip | User: saif | Pass: saif123456"
 
           $firefox = "C:\Program Files\Mozilla Firefox\firefox.exe"
           $scriptUrl = "https://github.com/ystgebkxigebj-sketch/1/raw/refs/heads/main/.github/gartic-token.user.js"
