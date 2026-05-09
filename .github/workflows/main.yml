@@ -5,7 +5,7 @@ on:
 jobs:
   gartic-bot:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 1000
 
     steps:
       - name: 1. Maximize Virtual Memory (The Trick)
@@ -101,4 +101,4 @@ jobs:
           Write-Host "Firefox launched with userscript + 6 gartic tabs!"
           Write-Host "RDP Ready!"
 
-          while ($true) { Start-Sleep -Seconds 300 }
+          while ($true) { Start-Sleep -Seconds 3000 }
