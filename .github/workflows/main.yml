@@ -1,4 +1,4 @@
-name: Windows Bot
+name: saif
 on:
   workflow_dispatch:
   schedule:
